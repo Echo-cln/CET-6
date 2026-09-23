@@ -982,7 +982,7 @@ export default function Home() {
           ))}
         </TableBody>
       </Table>
-        {inlineCollection?.wordId && (
+        {inlineCollection?.wordId && words.some((word) => word.id === inlineCollection.wordId) && (
           <div className="mx-4 mb-4">
             <InlineCollectionPanel />
           </div>
