@@ -21,6 +21,7 @@ import {
   Settings,
   Sparkles,
   Trash2,
+  Pencil,
   TrendingUp,
   Volume2,
 } from "lucide-react";
@@ -155,6 +156,25 @@ function formatMeanings(word: Word) {
   return [`${word.part_of_speech || ""} ${word.core_meaning || ""}`.trim()];
 }
 
+function calculateStudyStreak(history: Record<string, unknown>[]) {
+  const dates = new Set(
+    history
+      .filter((item) => Number(item.total || 0) > 0)
+      .map((item) => String(item.task_date || ""))
+      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)),
+  );
+  const now = new Date();
+  let cursor = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  let streak = 0;
+  while (dates.has(cursor)) {
+    streak += 1;
+    const day = new Date(`${cursor}T12:00:00`);
+    day.setDate(day.getDate() - 1);
+    cursor = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  }
+  return streak;
+}
+
 function speak(word: string, lang: "en-GB" | "en-US") {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     toast.error("当前浏览器不支持本地朗读");
@@ -232,6 +252,7 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [wordOrder, setWordOrder] = useState<"corpus" | "exam">("corpus");
   const [collectionOpen, setCollectionOpen] = useState(false);
+  const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [collectionWordId, setCollectionWordId] = useState<
     number | undefined
   >();
@@ -424,6 +445,7 @@ export default function Home() {
     translation = "",
     source = "用户收藏",
   ) => {
+    setEditingCollectionId(null);
     setCollectionWordId(wordId);
     setCollectionForm({
       content,
@@ -437,14 +459,36 @@ export default function Home() {
     setCollectionOpen(true);
     setSelection(null);
   };
+  const editCollection = (collection: Collection) => {
+    setEditingCollectionId(collection.id);
+    setCollectionWordId(collection.word_id);
+    setCollectionForm({
+      content: collection.content,
+      translation: collection.translation,
+      expressionType: collection.expression_type,
+      topic: collection.topic || "通用",
+      replaceableParts: collection.replaceable_parts || "",
+      source: collection.source || "用户收藏",
+      note: collection.note || "",
+    });
+    setCollectionOpen(true);
+  };
   const saveCollection = async () => {
+    const editing = Boolean(editingCollectionId);
     if (
       await mutate(
-        { action: "collect", wordId: collectionWordId, ...collectionForm },
-        "已加入写作金句库",
+        {
+          action: editing ? "update-collection" : "collect",
+          id: editingCollectionId,
+          wordId: collectionWordId,
+          ...collectionForm,
+        },
+        editing ? "写作金句已更新" : "已加入写作金句库",
       )
-    )
+    ) {
       setCollectionOpen(false);
+      setEditingCollectionId(null);
+    }
   };
   const openInlineCollection = (
     content: string,
@@ -633,62 +677,7 @@ export default function Home() {
           items={newItems}
           accent="#FCCEB4"
         />
-        <section className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
-            <TitleIcon
-              color="#D2E0AA"
-              icon={Sparkles}
-              title="易混辨析"
-              note="今天只记住词义边界"
-            />
-            <div className="space-y-3 text-sm leading-7">
-              <p>
-                <b>mitigate</b>：减轻已有的负面影响
-              </p>
-              <p>
-                <b>alleviate</b>：减轻痛苦、压力或贫困
-              </p>
-              <p>
-                <b>curb</b>：从源头抑制增长或发展
-              </p>
-            </div>
-          </div>
-          <div className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
-            <TitleIcon
-              color="#ABD7FB"
-              icon={FileText}
-              title="一句话总结"
-              note="把重点词放进同一个语境"
-            />
-            <p className="text-base leading-8">
-              Stringent policies may <mark>mitigate</mark> environmental damage,
-              but they must also <mark>reconcile</mark> economic growth with
-              social needs.
-            </p>
-            <p className="mt-3 text-sm text-[#697386]">
-              严格的政策可以减轻环境损害，但也必须协调经济增长与社会需求。
-            </p>
-            <Button
-              className="mt-4"
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                openInlineCollection(
-                  "Stringent policies may mitigate environmental damage, but they must also reconcile economic growth with social needs.",
-                  undefined,
-                  "严格的政策可以减轻环境损害，但也必须协调经济增长与社会需求。",
-                  "六级语境助记句",
-                )
-              }
-            >
-              <Bookmark className="size-4" />
-              收藏整句
-            </Button>
-            {inlineCollection && !inlineCollection.wordId && (
-              <InlineCollectionPanel />
-            )}
-          </div>
-        </section>
+        <TaskInsights items={[...reviewItems, ...newItems]} />
         <WritingReview />
       </div>
     );
@@ -857,6 +846,7 @@ export default function Home() {
 
   function VocabularyTable({ words }: { words: Word[] }) {
     return (
+      <div className="space-y-3">
       <Table className="table-fixed w-full">
         <TableHeader>
           <TableRow className="bg-[#FAF6F3]">
@@ -943,27 +933,8 @@ export default function Home() {
                       {word.source}
                     </span>
                   )}
-                  <button
-                    className="ml-auto text-[#A64B1C]"
-                    onClick={() =>
-                      openInlineCollection(
-                        word.example,
-                        word.id,
-                        word.example_translation,
-                        word.source || word.example_type,
-                      )
-                    }
-                    title="收藏例句"
-                  >
-                    <Bookmark className="size-4" />
-                  </button>
+
                 </div>
-                {word.comparison?.distinction && (
-                  <div className={`mt-2 rounded-md border border-[#E7DFD8] bg-[#FCFAF7] p-2 text-xs leading-5 text-[#586274] ${hideMeaning ? "select-none text-transparent" : ""}`}>
-                    <b className="mr-1 text-[#7F3C1D]">相近词辨析</b>{word.comparison.distinction}
-                    {word.comparison.contrastExample && <p className="mt-1">{word.comparison.contrastExample}</p>}
-                  </div>
-                )}
                 {appData.highlights.some((h) => h.word_id === word.id) && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {appData.highlights
@@ -980,12 +951,17 @@ export default function Home() {
                       ))}
                   </div>
                 )}
-                {inlineCollection?.wordId === word.id && (
-                  <InlineCollectionPanel />
-                )}
               </TableCell>
               <TableCell className="pr-5 align-top">
-                <div className="flex min-w-48 items-center justify-end gap-2">
+                <div className="flex min-w-56 flex-nowrap items-center justify-end gap-2">
+                  <button
+                    className="shrink-0 rounded-lg border border-[#E5DAD4] bg-white p-1.5 text-[#A64B1C] hover:border-[#F98C53]"
+                    onClick={() => openInlineCollection(word.example, word.id, word.example_translation, word.source || word.example_type)}
+                    title="收藏到写作金句"
+                    disabled={!word.example}
+                  >
+                    <Bookmark className="size-4" />
+                  </button>
                   {(
                     ["unfamiliar", "familiar", "mastered"] as Proficiency[]
                   ).map((p) => (
@@ -1006,6 +982,52 @@ export default function Home() {
           ))}
         </TableBody>
       </Table>
+        {inlineCollection?.wordId && (
+          <div className="mx-4 mb-4">
+            <InlineCollectionPanel />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function TaskInsights({ items }: { items: Word[] }) {
+    const focus = items.filter((word, index, list) => list.findIndex((item) => item.id === word.id) === index);
+    const comparisons = focus.filter((word) => word.comparison?.distinction);
+    const sentences = focus.filter((word) => word.example);
+    return (
+      <section className="grid gap-5 lg:grid-cols-2">
+        <div className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
+          <TitleIcon color="#D2E0AA" icon={Sparkles} title="相近词辨析" note="放在任务最后，按今天的词义边界集中记忆" />
+          {comparisons.length ? (
+            <div className="space-y-3">
+              {comparisons.map((word) => (
+                <div key={word.id} className="rounded-2xl border border-[#E7DFD8] bg-[#FCFAF7] p-3 text-sm leading-6 text-[#586274]">
+                  <b className="mr-1 text-[#7F3C1D]">{word.word}</b>
+                  {word.comparison?.distinction}
+                  {word.comparison?.contrastExample && <p className="mt-1 text-xs">{word.comparison.contrastExample}</p>}
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-[#697386]">今日任务暂无相近词辨析，后续词条会在这里集中显示。</p>}
+        </div>
+        <div className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
+          <TitleIcon color="#ABD7FB" icon={FileText} title="一句话总结" note="一个句子覆盖一个重点词；词多时自动分成多句" />
+          <div className="max-h-[32rem] space-y-4 overflow-y-auto pr-1">
+            {sentences.map((word) => (
+              <div key={word.id} className="border-b border-[#F0EAE6] pb-4 last:border-0 last:pb-0">
+                <p className="text-sm leading-7">{renderMarkedText(word.example, word.word, appData.highlights.filter((h) => h.word_id === word.id))}</p>
+                <p className="mt-1 text-xs leading-6 text-[#697386]">{word.example_translation || "中文含义待补充"}</p>
+                <Button className="mt-2" size="sm" variant="outline" onClick={() => openInlineCollection(word.example, word.id, word.example_translation, word.source || word.example_type)}>
+                  <Bookmark className="size-3.5" />收藏并编辑
+                </Button>
+              </div>
+            ))}
+            {!sentences.length && <p className="text-sm text-[#697386]">今日词条的例句正在整理中。</p>}
+          </div>
+          {inlineCollection && !inlineCollection.wordId && <InlineCollectionPanel />}
+        </div>
+      </section>
     );
   }
 
@@ -1301,7 +1323,14 @@ export default function Home() {
                     </button>
                   ))}
                   <button
-                    className="ml-auto text-[#A64B1C]"
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-[#28628F]"
+                    onClick={() => editCollection(c)}
+                  >
+                    <Pencil className="size-3.5" />
+                    编辑
+                  </button>
+                  <button
+                    className="text-[#A64B1C]"
                     onClick={() =>
                       mutate(
                         { action: "delete-collection", id: c.id },
@@ -1781,7 +1810,7 @@ export default function Home() {
           <div className="hidden items-center gap-4 text-xs xl:flex">
             <span className="flex items-center gap-1.5">
               <Flame className="size-4 text-[#F98C53]" />
-              连续 1 天
+              连续 {calculateStudyStreak(appData.history)} 天
             </span>
             <span>
               复习 {reviewDone}/{reviewItems.length}
@@ -1791,7 +1820,7 @@ export default function Home() {
             </span>
             <label className="flex items-center gap-1 rounded-lg bg-[#FAF6F3] px-2 py-1 text-[#697386]" title="选择要查看或调整的学习日期">
               <CalendarDays className="size-3.5" />
-              <input className="w-[106px] bg-transparent text-xs outline-none" type="date" value={activeDate} onChange={(event) => setSelectedDate(event.target.value || null)} />
+              <input className="w-[106px] bg-transparent text-xs outline-none" type="date" value={activeDate} onChange={(event) => { setLoading(true); setSelectedDate(event.target.value || null); }} />
             </label>
             {selectedDate && <button className="text-xs text-[#9E4F24] underline" onClick={() => setSelectedDate(null)}>回到今天</button>}
             <button
@@ -1846,7 +1875,7 @@ export default function Home() {
       <Dialog open={collectionOpen} onOpenChange={setCollectionOpen}>
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>收藏至写作金句</DialogTitle>
+            <DialogTitle>{editingCollectionId ? "编辑写作金句" : "收藏至写作金句"}</DialogTitle>
             <DialogDescription>
               补充用途与可替换成分，之后可以按主题复习和仿写。
             </DialogDescription>
@@ -1964,7 +1993,7 @@ export default function Home() {
             </Button>
             <Button onClick={saveCollection}>
               <Bookmark className="size-4" />
-              保存收藏
+              {editingCollectionId ? "保存修改" : "保存收藏"}
             </Button>
           </DialogFooter>
         </DialogContent>

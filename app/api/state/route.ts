@@ -475,6 +475,26 @@ export async function POST(request: Request) {
       if (rows[0]?.id) await insertRows("writing_collection_tags", { collection_id: rows[0].id, tag: String(body.topic || "通用") }, "collection_id,tag");
       return Response.json({ ok: true });
     }
+    if (action === "update-collection") {
+      const id = String(body.id || "");
+      const content = String(body.content || "").trim();
+      if (!id || !content) return Response.json({ error: "收藏内容不能为空" }, { status: 400 });
+      const existing = await getRows(`writing_collections?select=id&id=eq.${id}&user_id=eq.${user.id}&limit=1`);
+      if (!existing.length) return Response.json({ error: "收藏不存在或无权修改" }, { status: 404 });
+      await patchRows("writing_collections", `id=eq.${id}&user_id=eq.${user.id}`, {
+        word_id: body.wordId ? Number(body.wordId) : null,
+        content,
+        translation: String(body.translation || ""),
+        expression_type: String(body.expressionType || "句型"),
+        replaceable_parts: String(body.replaceableParts || ""),
+        source_type: String(body.source || "").includes("真题") ? "exam" : "user",
+        source_label: String(body.source || "用户收藏"),
+        note: String(body.note || ""),
+      });
+      await dbRequest(`writing_collection_tags?collection_id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" });
+      await insertRows("writing_collection_tags", { collection_id: id, tag: String(body.topic || "通用") }, "collection_id,tag");
+      return Response.json({ ok: true });
+    }
     if (action === "rate-collection") { await patchRows("writing_collections", `id=eq.${body.id}&user_id=eq.${user.id}`, { proficiency: body.proficiency }); return Response.json({ ok: true }); }
     if (action === "delete-collection") { await dbRequest(`writing_collections?id=eq.${body.id}&user_id=eq.${user.id}`, { method: "DELETE", prefer: "return=minimal" }); return Response.json({ ok: true }); }
     if (action === "highlight") {
