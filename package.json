@@ -11,7 +11,8 @@
     "vercel-build": "next build",
     "start": "next start",
     "lint": "eslint . --ignore-pattern .next",
-    "import:enhanced": "node scripts/import-enhanced-lexicon.mjs"
+    "import:enhanced": "node --env-file=.env.local scripts/import-enhanced-lexicon.mjs",
+    "repair:collocations": "node --env-file=.env.local scripts/repair-collocations.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

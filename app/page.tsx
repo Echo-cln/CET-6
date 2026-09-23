@@ -1000,7 +1000,7 @@ export default function Home() {
         <div className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
           <TitleIcon color="#D2E0AA" icon={Sparkles} title="相近词辨析" note="放在任务最后，按今天的词义边界集中记忆" />
           {comparisons.length ? (
-            <div className="space-y-3">
+            <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
               {comparisons.map((word) => (
                 <div key={word.id} className="rounded-2xl border border-[#E7DFD8] bg-[#FCFAF7] p-3 text-sm leading-6 text-[#586274]">
                   <b className="mr-1 text-[#7F3C1D]">{word.word}</b>
