@@ -26,8 +26,14 @@ async function request(endpoint, options = {}) {
 const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
 const quoteIn = (items) => `in.(${items.map((item) => encodeURIComponent(String(item))).join(",")})`;
 
-const expected = lexicon.flatMap((item) => Array.isArray(item.collocations) ? item.collocations : []);
-if (!expected.length) throw new Error("增强词库中没有可导入的必记搭配，已中止以保护现有数据。");
+const missingCollocations = lexicon
+  .filter((item) => !Array.isArray(item.collocations) || !item.collocations.some((entry) => String(entry?.phrase || "").trim() && String(entry?.translation || "").trim()))
+  .map((item) => String(item.word));
+if (missingCollocations.length) {
+  throw new Error(`增强词库未达到 1800/1800 标准：缺少 ${missingCollocations.length} 个词的“英文搭配 + 中文含义”，例如：${missingCollocations.slice(0, 20).join(", ")}。已中止，数据库没有被修改。`);
+}
+const expected = lexicon.flatMap((item) => item.collocations);
+if (lexicon.length !== 1800) throw new Error(`增强词库应为 1800 词，当前只有 ${lexicon.length} 词，已中止。`);
 
 const wordIdByLemma = new Map();
 for (const batch of chunk(lexicon, 120)) {
@@ -73,5 +79,6 @@ for (const ids of chunk(senseIds, 250)) {
   const rows = await request(`word_collocations?select=id&sense_id=in.(${ids.join(",")})`);
   verified += rows.length;
 }
+if (new Set(records.map((row) => row.sense_id)).size !== 1800) throw new Error("校验失败：并非每个词都形成了搭配记录。");
 if (verified !== records.length) throw new Error(`校验失败：应写入 ${records.length} 条，实际读回 ${verified} 条。请不要刷新网站，先保留这段输出。`);
-console.log(`完成：已修复 ${verified} 条必记搭配（英文短语 + 中文含义）。`);
+console.log(`完成：1800/1800 个单词均已写入必记搭配，共 ${verified} 条（英文短语 + 中文含义）。`);
