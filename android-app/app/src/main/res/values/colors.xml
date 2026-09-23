@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ice_background">#FBEAE7</color>
+    <color name="ice_pink">#F6D0D9</color>
+    <color name="ice_mist">#CFEAEC</color>
+    <color name="ice_teal">#93C9C3</color>
+    <color name="ink">#28484B</color>
+    <color name="muted_ink">#5F7678</color>
+</resources>
