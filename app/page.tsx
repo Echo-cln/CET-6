@@ -2051,23 +2051,39 @@ function LoginScreen({
 }: {
   onSession: (session: { access_token: string; refresh_token: string }) => void;
 }) {
-  const [mode, setMode] = useState<"login" | "activate" | "forgot">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
+  const [contactMethod, setContactMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("1801135991@qq.com");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [registerSent, setRegisterSent] = useState(false);
   const [displayName, setDisplayName] = useState("Echo");
   const [busy, setBusy] = useState(false);
+  const isRegister = mode === "register";
   const isResetting = mode === "forgot";
+  const switchMode = (next: "login" | "register") => {
+    setMode(next);
+    setCode("");
+    setPassword("");
+    setConfirmPassword("");
+    setRegisterSent(false);
+    setResetSent(false);
+  };
   const submit = async () => {
     setBusy(true);
     try {
-      const action = isResetting ? (resetSent ? "reset-password" : "request-password-reset") : mode;
+      const action = isRegister
+        ? (registerSent ? "complete-registration" : "request-registration-code")
+        : isResetting
+          ? (resetSent ? "reset-password" : "request-password-reset")
+          : "login";
       const response = await fetch("/api/auth", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, email, password, confirmPassword, displayName, code }),
+        body: JSON.stringify({ action, contactMethod, email, phone, password, confirmPassword, displayName, code }),
       });
       const payload = (await response.json()) as {
         access_token?: string;
@@ -2075,76 +2091,82 @@ function LoginScreen({
         error?: string;
       };
       if (!response.ok) throw new Error(payload.error || "操作失败");
+      if (isRegister && !registerSent) {
+        setRegisterSent(true);
+        toast.success(contactMethod === "email" ? "邮箱验证码已发送" : "短信验证码已发送");
+        return;
+      }
       if (isResetting) {
         if (!resetSent) {
           setResetSent(true);
           toast.success("如该邮箱已开通账户，验证码已发送");
         } else {
-          setMode("login");
-          setResetSent(false);
-          setPassword("");
-          setConfirmPassword("");
-          setCode("");
+          switchMode("login");
           toast.success("密码已重置，请使用新密码登录");
         }
         return;
       }
-      if (!payload.access_token || !payload.refresh_token) throw new Error("登录失败");
+      if (!payload.access_token || !payload.refresh_token) throw new Error("登录会话创建失败");
       onSession({ access_token: payload.access_token, refresh_token: payload.refresh_token });
-      toast.success(mode === "activate" ? "管理员账户已建立" : "登录成功");
+      toast.success(isRegister ? "注册成功，欢迎开始学习" : "登录成功");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "登录失败");
+      toast.error(error instanceof Error ? error.message : "操作失败");
     } finally {
       setBusy(false);
     }
   };
-  const switchMode = (next: "login" | "activate") => {
-    setMode(next);
-    setResetSent(false);
-    setCode("");
-    setPassword("");
-    setConfirmPassword("");
-  };
+  const contactField = (
+    <Field label={contactMethod === "email" ? "邮箱地址" : "手机号码"}>
+      <Input
+        type={contactMethod === "email" ? "email" : "tel"}
+        autoComplete={contactMethod === "email" ? "email" : "tel"}
+        inputMode={contactMethod === "phone" ? "tel" : undefined}
+        placeholder={contactMethod === "email" ? "name@example.com" : "请输入手机号，如 13800138000"}
+        value={contactMethod === "email" ? email : phone}
+        onChange={(event) => contactMethod === "email" ? setEmail(event.target.value) : setPhone(event.target.value)}
+      />
+    </Field>
+  );
   return (
-    <main className="relative grid min-h-screen overflow-hidden bg-[#F9F2EF] px-4 py-6 text-[#243247] sm:place-items-center sm:p-8">
-      <div className="pointer-events-none absolute -left-28 top-8 size-72 rounded-full bg-[#FCCEB4]/45 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 -right-16 size-80 rounded-full bg-[#ABD7FB]/35 blur-3xl" />
-      <section className="relative grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#EADFD9] bg-[#FFFDFB]/95 shadow-2xl shadow-[#D9B8A8]/25 lg:grid-cols-[1.05fr_.95fr]">
-        <aside className="relative overflow-hidden bg-[#243247] p-8 text-white sm:p-10">
-          <div className="absolute -right-20 top-8 size-52 rounded-full border border-white/10" />
-          <div className="absolute -bottom-28 left-12 size-64 rounded-full bg-[#F98C53]/20 blur-2xl" />
+    <main className="relative grid min-h-screen overflow-hidden bg-[#FCF7F4] px-4 py-6 text-[#243247] sm:place-items-center sm:p-8">
+      <div className="pointer-events-none absolute -left-24 top-8 size-80 rounded-full bg-[#D9EAF8]/70 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-36 right-8 size-96 rounded-full bg-[#F9D8C7]/55 blur-3xl" />
+      <section className="relative grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#EADFD9] bg-[#FFFDFB]/95 shadow-2xl shadow-[#DCC8BF]/30 lg:grid-cols-[1.05fr_.95fr]">
+        <aside className="relative overflow-hidden bg-[linear-gradient(145deg,#EEF8FF_0%,#F9F4E9_52%,#FBE8DE_100%)] p-8 sm:p-10">
+          <div className="absolute -right-16 top-6 size-56 rounded-full border border-[#ABD7FB]/70" />
+          <div className="absolute bottom-0 left-0 h-28 w-full bg-[radial-gradient(ellipse_at_bottom,#D7E7B0_0%,transparent_65%)] opacity-60" />
           <div className="relative flex h-full flex-col">
             <div className="flex items-center gap-3">
-              <span className="grid size-12 place-items-center rounded-2xl bg-[#F98C53] shadow-lg shadow-[#F98C53]/25">
+              <span className="grid size-12 place-items-center rounded-2xl bg-[#F98C53] text-white shadow-lg shadow-[#F98C53]/20">
                 <BookOpen className="size-6" />
               </span>
               <div>
-                <h1 className="text-2xl font-semibold tracking-wide">溯·辞</h1>
-                <p className="text-sm text-white/65">CET-6 Vocabulary Studio</p>
+                <h1 className="text-2xl font-semibold tracking-wide text-[#243247]">溯·辞</h1>
+                <p className="text-sm text-[#637489]">CET-6 Vocabulary Studio</p>
               </div>
             </div>
             <div className="my-10 max-w-sm sm:my-14">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-[#FFE3D4]">
-                <Sparkles className="size-3.5" /> 每日稳步积累
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#C8DFF0] bg-white/70 px-3 py-1 text-xs font-medium text-[#40617C]">
+                <Sparkles className="size-3.5 text-[#E98954]" /> 每日稳步积累
               </span>
-              <h2 className="mt-5 text-3xl font-semibold leading-tight sm:text-4xl">
+              <h2 className="mt-5 text-3xl font-semibold leading-tight text-[#243247] sm:text-4xl">
                 把每一次记忆，
                 <br />
                 变成真正能用的表达。
               </h2>
-              <p className="mt-5 text-sm leading-7 text-white/70">
+              <p className="mt-5 text-sm leading-7 text-[#617286]">
                 从核心词义、必记搭配到写作金句，把六级词汇学得更深，也用得更自然。
               </p>
             </div>
             <div className="mt-auto grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               {[
-                ["1800", "核心词库"],
-                ["20", "每日新词"],
-                ["3", "熟练度层级"],
-              ].map(([value, label]) => (
-                <div key={label} className="rounded-2xl border border-white/10 bg-white/[.07] px-4 py-3">
-                  <strong className="block text-lg text-[#FFE3D4]">{value}</strong>
-                  <span className="text-xs text-white/60">{label}</span>
+                ["1800", "核心词库", "#D8ECFC"],
+                ["20", "每日新词", "#FDE2D3"],
+                ["3", "熟练度层级", "#E4EDC9"],
+              ].map(([value, label, color]) => (
+                <div key={label} className="rounded-2xl border border-white/75 bg-white/60 px-4 py-3 backdrop-blur-sm">
+                  <strong className="block text-lg text-[#243247]" style={{ color }}>{value}</strong>
+                  <span className="text-xs text-[#697386]">{label}</span>
                 </div>
               ))}
             </div>
@@ -2153,59 +2175,47 @@ function LoginScreen({
         <div className="p-7 sm:p-10">
           <div className="max-w-sm">
             <p className="text-sm font-medium text-[#9E4F24]">
-              {mode === "activate" ? "首次启用" : isResetting ? "找回密码" : "欢迎回来"}
+              {isRegister ? "创建账户" : isResetting ? "找回密码" : "欢迎回来"}
             </p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-              {mode === "activate" ? "建立你的学习空间" : isResetting ? (resetSent ? "设置新密码" : "重获访问权限") : "继续今天的学习"}
+              {isRegister ? (registerSent ? "验证你的联系方式" : "开始你的学习计划") : isResetting ? (resetSent ? "设置新密码" : "重获访问权限") : "继续今天的学习"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#697386]">
-              {mode === "activate" ? "创建管理员账户后，即可开始管理个人词汇计划。" : isResetting ? (resetSent ? "请填写邮箱收到的 6 位验证码，并设置新密码。" : "输入账户邮箱，我们会发送一封验证码邮件。") : "登录后查看今日任务和上次的学习进度。"}
+              {isRegister ? (registerSent ? `请输入发送至${contactMethod === "email" ? "邮箱" : "手机"}的 6 位验证码，完成注册。` : "使用邮箱或手机号注册，验证后即可保存独立的学习记录。") : isResetting ? (resetSent ? "请填写邮箱收到的 6 位验证码，并设置新密码。" : "输入账户邮箱，我们会发送一封验证码邮件。") : "登录后查看今日任务和上次的学习进度。"}
             </p>
           </div>
           {!isResetting && (
             <div className="mt-7 grid grid-cols-2 rounded-2xl border border-[#EADFD9] bg-[#F8F3F0] p-1.5">
-              <button
-                className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "login" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`}
-                onClick={() => switchMode("login")}
-              >
-                账户登录
-              </button>
-              <button
-                className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "activate" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`}
-                onClick={() => switchMode("activate")}
-              >
-                首次启用
-              </button>
+              <button className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "login" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`} onClick={() => switchMode("login")}>账户登录</button>
+              <button className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "register" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`} onClick={() => switchMode("register")}>注册账户</button>
             </div>
           )}
-          <div className="mt-6 space-y-4">
-            {mode === "activate" && <Field label="显示名称"><Input placeholder="例如 Echo" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>}
-            <Field label="邮箱地址"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+          {(isRegister || (!isResetting && mode === "login")) && (
+            <div className="mt-5 flex items-center gap-2 text-xs text-[#697386]">
+              <span>使用</span>
+              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "email" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} onClick={() => setContactMethod("email")}>邮箱</button>
+              <span className="text-[#D4C7C0]">/</span>
+              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "phone" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} onClick={() => setContactMethod("phone")}>手机号</button>
+            </div>
+          )}
+          <div className="mt-5 space-y-4">
+            {isRegister && !registerSent && <Field label="显示名称"><Input placeholder="例如 Echo" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>}
+            {isResetting ? <Field label="邮箱地址"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></Field> : contactField}
+            {isRegister && registerSent && <Field label={contactMethod === "email" ? "邮箱验证码（6 位）" : "短信验证码（6 位）"}><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
             {isResetting && resetSent && <Field label="邮件验证码（6 位）"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
-            {(!isResetting || resetSent) && <Field label={mode === "activate" || resetSent ? "设置新密码（至少 8 位）" : "密码"}><Input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
-            {(mode === "activate" || (isResetting && resetSent)) && <Field label="再次输入密码"><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
+            {(!isResetting || resetSent) && <Field label={isRegister || resetSent ? "设置密码（至少 8 位）" : "密码"}><Input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
+            {(isRegister || (isResetting && resetSent)) && <Field label="确认密码"><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
             <Button className="mt-2 h-11 w-full rounded-xl bg-[#F98C53] text-[15px] font-semibold text-white shadow-lg shadow-[#F98C53]/20 hover:bg-[#E77A42]" disabled={busy} onClick={submit}>
               {busy && <Loader2 className="size-4 animate-spin" />}
-              {mode === "activate" ? "建立管理员账户并进入" : isResetting ? resetSent ? "验证并重置密码" : "发送邮箱验证码" : "登录并开始学习"}
+              {isRegister ? registerSent ? "验证并完成注册" : "发送验证码" : isResetting ? resetSent ? "验证并重置密码" : "发送邮箱验证码" : "登录并开始学习"}
               {!busy && !isResetting && <ChevronRight className="size-4" />}
             </Button>
           </div>
           <div className="mt-5 flex items-center justify-between gap-3 text-sm">
-            {isResetting ? (
-              <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("login"); setResetSent(false); }}>
-                返回登录
-              </button>
-            ) : (
-              <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("forgot"); setResetSent(false); setPassword(""); setConfirmPassword(""); }}>
-                忘记密码？
-              </button>
-            )}
-            <span className="text-xs text-[#8A94A4]">你的学习记录会单独保存</span>
+            {isResetting ? <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("login"); setResetSent(false); }}>返回登录</button> : <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("forgot"); setResetSent(false); setPassword(""); setConfirmPassword(""); }}>忘记密码？</button>}
+            <span className="text-xs text-[#8A94A4]">学习记录单独保存</span>
           </div>
-          <div className="mt-7 rounded-2xl border border-[#D8EAF8] bg-[#F3FAFF] px-4 py-3 text-xs leading-5 text-[#486176]">
-            <strong className="font-semibold text-[#28628F]">首次使用提示：</strong>
-            请选择“首次启用”创建管理员账户。完成后，公开注册会自动关闭，后续账户由管理员分配。
-          </div>
+          {isRegister && contactMethod === "phone" && <p className="mt-5 rounded-2xl border border-[#D8EAF8] bg-[#F3FAFF] px-4 py-3 text-xs leading-5 text-[#486176]">手机号验证码由认证服务发送；请使用可接收短信的真实号码。</p>}
         </div>
       </section>
     </main>
