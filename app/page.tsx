@@ -2059,10 +2059,11 @@ function LoginScreen({
   const [resetSent, setResetSent] = useState(false);
   const [displayName, setDisplayName] = useState("Echo");
   const [busy, setBusy] = useState(false);
+  const isResetting = mode === "forgot";
   const submit = async () => {
     setBusy(true);
     try {
-      const action = mode === "forgot" ? (resetSent ? "reset-password" : "request-password-reset") : mode;
+      const action = isResetting ? (resetSent ? "reset-password" : "request-password-reset") : mode;
       const response = await fetch("/api/auth", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -2074,9 +2075,18 @@ function LoginScreen({
         error?: string;
       };
       if (!response.ok) throw new Error(payload.error || "操作失败");
-      if (mode === "forgot") {
-        if (!resetSent) { setResetSent(true); toast.success("如该邮箱已开通账户，验证码已发送"); }
-        else { setMode("login"); setResetSent(false); setPassword(""); setConfirmPassword(""); setCode(""); toast.success("密码已重置，请使用新密码登录"); }
+      if (isResetting) {
+        if (!resetSent) {
+          setResetSent(true);
+          toast.success("如该邮箱已开通账户，验证码已发送");
+        } else {
+          setMode("login");
+          setResetSent(false);
+          setPassword("");
+          setConfirmPassword("");
+          setCode("");
+          toast.success("密码已重置，请使用新密码登录");
+        }
         return;
       }
       if (!payload.access_token || !payload.refresh_token) throw new Error("登录失败");
@@ -2088,29 +2098,115 @@ function LoginScreen({
       setBusy(false);
     }
   };
+  const switchMode = (next: "login" | "activate") => {
+    setMode(next);
+    setResetSent(false);
+    setCode("");
+    setPassword("");
+    setConfirmPassword("");
+  };
   return (
-    <main className="grid min-h-screen place-items-center bg-[#F9F2EF] px-4 text-[#243247]">
-      <section className="w-full max-w-md rounded-[2rem] border border-[#EADFD9] bg-[#FFFDFB] p-7 shadow-xl shadow-[#E5CFC2]/30">
-        <div className="flex items-center gap-3">
-          <span className="grid size-12 place-items-center rounded-2xl bg-[#F98C53] text-white"><BookOpen className="size-6" /></span>
-          <div><h1 className="text-2xl font-semibold">溯·辞</h1><p className="text-sm text-[#697386]">溯阅千辞，日就月将</p></div>
+    <main className="relative grid min-h-screen overflow-hidden bg-[#F9F2EF] px-4 py-6 text-[#243247] sm:place-items-center sm:p-8">
+      <div className="pointer-events-none absolute -left-28 top-8 size-72 rounded-full bg-[#FCCEB4]/45 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-28 -right-16 size-80 rounded-full bg-[#ABD7FB]/35 blur-3xl" />
+      <section className="relative grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[#EADFD9] bg-[#FFFDFB]/95 shadow-2xl shadow-[#D9B8A8]/25 lg:grid-cols-[1.05fr_.95fr]">
+        <aside className="relative overflow-hidden bg-[#243247] p-8 text-white sm:p-10">
+          <div className="absolute -right-20 top-8 size-52 rounded-full border border-white/10" />
+          <div className="absolute -bottom-28 left-12 size-64 rounded-full bg-[#F98C53]/20 blur-2xl" />
+          <div className="relative flex h-full flex-col">
+            <div className="flex items-center gap-3">
+              <span className="grid size-12 place-items-center rounded-2xl bg-[#F98C53] shadow-lg shadow-[#F98C53]/25">
+                <BookOpen className="size-6" />
+              </span>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-wide">溯·辞</h1>
+                <p className="text-sm text-white/65">CET-6 Vocabulary Studio</p>
+              </div>
+            </div>
+            <div className="my-10 max-w-sm sm:my-14">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-[#FFE3D4]">
+                <Sparkles className="size-3.5" /> 每日稳步积累
+              </span>
+              <h2 className="mt-5 text-3xl font-semibold leading-tight sm:text-4xl">
+                把每一次记忆，
+                <br />
+                变成真正能用的表达。
+              </h2>
+              <p className="mt-5 text-sm leading-7 text-white/70">
+                从核心词义、必记搭配到写作金句，把六级词汇学得更深，也用得更自然。
+              </p>
+            </div>
+            <div className="mt-auto grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              {[
+                ["1800", "核心词库"],
+                ["20", "每日新词"],
+                ["3", "熟练度层级"],
+              ].map(([value, label]) => (
+                <div key={label} className="rounded-2xl border border-white/10 bg-white/[.07] px-4 py-3">
+                  <strong className="block text-lg text-[#FFE3D4]">{value}</strong>
+                  <span className="text-xs text-white/60">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+        <div className="p-7 sm:p-10">
+          <div className="max-w-sm">
+            <p className="text-sm font-medium text-[#9E4F24]">
+              {mode === "activate" ? "首次启用" : isResetting ? "找回密码" : "欢迎回来"}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight">
+              {mode === "activate" ? "建立你的学习空间" : isResetting ? (resetSent ? "设置新密码" : "重获访问权限") : "继续今天的学习"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#697386]">
+              {mode === "activate" ? "创建管理员账户后，即可开始管理个人词汇计划。" : isResetting ? (resetSent ? "请填写邮箱收到的 6 位验证码，并设置新密码。" : "输入账户邮箱，我们会发送一封验证码邮件。") : "登录后查看今日任务和上次的学习进度。"}
+            </p>
+          </div>
+          {!isResetting && (
+            <div className="mt-7 grid grid-cols-2 rounded-2xl border border-[#EADFD9] bg-[#F8F3F0] p-1.5">
+              <button
+                className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "login" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`}
+                onClick={() => switchMode("login")}
+              >
+                账户登录
+              </button>
+              <button
+                className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "activate" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`}
+                onClick={() => switchMode("activate")}
+              >
+                首次启用
+              </button>
+            </div>
+          )}
+          <div className="mt-6 space-y-4">
+            {mode === "activate" && <Field label="显示名称"><Input placeholder="例如 Echo" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>}
+            <Field label="邮箱地址"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+            {isResetting && resetSent && <Field label="邮件验证码（6 位）"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
+            {(!isResetting || resetSent) && <Field label={mode === "activate" || resetSent ? "设置新密码（至少 8 位）" : "密码"}><Input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
+            {(mode === "activate" || (isResetting && resetSent)) && <Field label="再次输入密码"><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
+            <Button className="mt-2 h-11 w-full rounded-xl bg-[#F98C53] text-[15px] font-semibold text-white shadow-lg shadow-[#F98C53]/20 hover:bg-[#E77A42]" disabled={busy} onClick={submit}>
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              {mode === "activate" ? "建立管理员账户并进入" : isResetting ? resetSent ? "验证并重置密码" : "发送邮箱验证码" : "登录并开始学习"}
+              {!busy && !isResetting && <ChevronRight className="size-4" />}
+            </Button>
+          </div>
+          <div className="mt-5 flex items-center justify-between gap-3 text-sm">
+            {isResetting ? (
+              <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("login"); setResetSent(false); }}>
+                返回登录
+              </button>
+            ) : (
+              <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("forgot"); setResetSent(false); setPassword(""); setConfirmPassword(""); }}>
+                忘记密码？
+              </button>
+            )}
+            <span className="text-xs text-[#8A94A4]">你的学习记录会单独保存</span>
+          </div>
+          <div className="mt-7 rounded-2xl border border-[#D8EAF8] bg-[#F3FAFF] px-4 py-3 text-xs leading-5 text-[#486176]">
+            <strong className="font-semibold text-[#28628F]">首次使用提示：</strong>
+            请选择“首次启用”创建管理员账户。完成后，公开注册会自动关闭，后续账户由管理员分配。
+          </div>
         </div>
-        <div className="mt-7 grid grid-cols-2 rounded-xl bg-[#F4ECE8] p-1">
-          <button className={`rounded-lg px-3 py-2 text-sm ${mode === "login" ? "bg-white font-medium shadow-sm" : "text-[#697386]"}`} onClick={() => setMode("login")}>账户登录</button>
-          <button className={`rounded-lg px-3 py-2 text-sm ${mode === "activate" ? "bg-white font-medium shadow-sm" : "text-[#697386]"}`} onClick={() => { setMode("activate"); setResetSent(false); }}>首次启用</button>
-        </div>
-        <div className="mt-5 space-y-4">
-          {mode === "activate" && <Field label="显示名称"><Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>}
-          <Field label="邮箱"><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
-          {mode === "forgot" && resetSent && <Field label="邮件验证码（6 位）"><Input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
-          {mode !== "forgot" || resetSent ? <Field label={mode === "activate" || resetSent ? "设置新密码（至少 8 位）" : "密码"}><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field> : null}
-          {(mode === "activate" || (mode === "forgot" && resetSent)) && <Field label="再次输入密码"><Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
-          <Button className="w-full" disabled={busy} onClick={submit}>{busy && <Loader2 className="size-4 animate-spin" />}{mode === "activate" ? "建立管理员账户并进入" : mode === "forgot" ? resetSent ? "验证并重置密码" : "发送邮箱验证码" : "登录并开始学习"}</Button>
-        </div>
-        <div className="mt-4 text-center text-sm">{mode === "forgot" ? <button className="text-[#9E4F24] underline" onClick={() => { setMode("login"); setResetSent(false); }}>返回登录</button> : <button className="text-[#9E4F24] underline" onClick={() => { setMode("forgot"); setResetSent(false); setPassword(""); setConfirmPassword(""); }}>忘记密码？</button>}</div>
-        <p className="mt-5 rounded-xl bg-[#EFF8FF] p-3 text-xs leading-5 text-[#486176]">
-          第一次使用请选择“首次启用”。建立管理员后，公开注册会自动关闭，后续账户由管理员分配。
-        </p>
       </section>
     </main>
   );
