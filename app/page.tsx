@@ -2052,9 +2052,7 @@ function LoginScreen({
   onSession: (session: { access_token: string; refresh_token: string }) => void;
 }) {
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
-  const [contactMethod, setContactMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("1801135991@qq.com");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
@@ -2083,7 +2081,7 @@ function LoginScreen({
       const response = await fetch("/api/auth", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, contactMethod, email, phone, password, confirmPassword, displayName, code }),
+        body: JSON.stringify({ action, contactMethod: "email", email, password, confirmPassword, displayName, code }),
       });
       const payload = (await response.json()) as {
         access_token?: string;
@@ -2093,7 +2091,7 @@ function LoginScreen({
       if (!response.ok) throw new Error(payload.error || "操作失败");
       if (isRegister && !registerSent) {
         setRegisterSent(true);
-        toast.success(contactMethod === "email" ? "邮箱验证码已发送" : "短信验证码已发送");
+        toast.success("邮箱验证码已发送");
         return;
       }
       if (isResetting) {
@@ -2115,18 +2113,6 @@ function LoginScreen({
       setBusy(false);
     }
   };
-  const contactField = (
-    <Field label={contactMethod === "email" ? "邮箱地址" : "手机号码"}>
-      <Input
-        type={contactMethod === "email" ? "email" : "tel"}
-        autoComplete={contactMethod === "email" ? "email" : "tel"}
-        inputMode={contactMethod === "phone" ? "tel" : undefined}
-        placeholder={contactMethod === "email" ? "name@example.com" : "请输入手机号，如 13800138000"}
-        value={contactMethod === "email" ? email : phone}
-        onChange={(event) => contactMethod === "email" ? setEmail(event.target.value) : setPhone(event.target.value)}
-      />
-    </Field>
-  );
   return (
     <main className="relative grid min-h-screen overflow-hidden bg-[#FCF7F4] px-4 py-6 text-[#243247] sm:place-items-center sm:p-8">
       <div className="pointer-events-none absolute -left-24 top-8 size-80 rounded-full bg-[#D9EAF8]/70 blur-3xl" />
@@ -2181,7 +2167,7 @@ function LoginScreen({
               {isRegister ? (registerSent ? "验证你的联系方式" : "开始你的学习计划") : isResetting ? (resetSent ? "设置新密码" : "重获访问权限") : "继续今天的学习"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#697386]">
-              {isRegister ? (registerSent ? `请输入发送至${contactMethod === "email" ? "邮箱" : "手机"}的 6 位验证码，完成注册。` : "使用邮箱或手机号注册，验证后即可保存独立的学习记录。") : isResetting ? (resetSent ? "请填写邮箱收到的 6 位验证码，并设置新密码。" : "输入账户邮箱，我们会发送一封验证码邮件。") : "登录后查看今日任务和上次的学习进度。"}
+              {isRegister ? (registerSent ? "请输入发送至邮箱的 6 位验证码，完成注册。" : "使用邮箱注册，验证后即可保存独立的学习记录。") : isResetting ? (resetSent ? "请填写邮箱收到的 6 位验证码，并设置新密码。" : "输入账户邮箱，我们会发送一封验证码邮件。") : "登录后查看今日任务和上次的学习进度。"}
             </p>
           </div>
           {!isResetting && (
@@ -2190,18 +2176,10 @@ function LoginScreen({
               <button className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "register" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`} onClick={() => switchMode("register")}>注册账户</button>
             </div>
           )}
-          {(isRegister || (!isResetting && mode === "login")) && (
-            <div className="mt-5 flex items-center gap-2 text-xs text-[#697386]">
-              <span>使用</span>
-              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "email" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} disabled={isRegister && registerSent} onClick={() => setContactMethod("email")}>邮箱</button>
-              <span className="text-[#D4C7C0]">/</span>
-              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "phone" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} disabled={isRegister && registerSent} onClick={() => setContactMethod("phone")}>手机号</button>
-            </div>
-          )}
           <div className="mt-5 space-y-4">
             {isRegister && !registerSent && <Field label="显示名称"><Input placeholder="例如 Echo" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>}
-            {isResetting ? <Field label="邮箱地址"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></Field> : contactField}
-            {isRegister && registerSent && <Field label={contactMethod === "email" ? "邮箱验证码（6 位）" : "短信验证码（6 位）"}><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
+            <Field label="邮箱地址"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+            {isRegister && registerSent && <Field label="邮箱验证码（6 位）"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
             {isResetting && resetSent && <Field label="邮件验证码（6 位）"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
             {(!isResetting || resetSent) && <Field label={isRegister || resetSent ? "设置密码（至少 8 位）" : "密码"}><Input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
             {(isRegister || (isResetting && resetSent)) && <Field label="确认密码"><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
@@ -2215,7 +2193,6 @@ function LoginScreen({
             {isResetting ? <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("login"); setResetSent(false); }}>返回登录</button> : <button className="font-medium text-[#9E4F24] hover:underline" onClick={() => { setMode("forgot"); setResetSent(false); setPassword(""); setConfirmPassword(""); }}>忘记密码？</button>}
             <span className="text-xs text-[#8A94A4]">学习记录单独保存</span>
           </div>
-          {isRegister && contactMethod === "phone" && <p className="mt-5 rounded-2xl border border-[#D8EAF8] bg-[#F3FAFF] px-4 py-3 text-xs leading-5 text-[#486176]">手机号验证码由认证服务发送；请使用可接收短信的真实号码。</p>}
         </div>
       </section>
     </main>
