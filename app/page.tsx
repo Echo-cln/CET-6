@@ -2160,9 +2160,9 @@ function LoginScreen({
             </div>
             <div className="mt-auto grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               {[
-                ["1800", "核心词库", "#D8ECFC"],
-                ["20", "每日新词", "#FDE2D3"],
-                ["3", "熟练度层级", "#E4EDC9"],
+                ["1800", "核心词库", "#28628F"],
+                ["20", "每日新词", "#A64B1C"],
+                ["3", "熟练度层级", "#556B2F"],
               ].map(([value, label, color]) => (
                 <div key={label} className="rounded-2xl border border-white/75 bg-white/60 px-4 py-3 backdrop-blur-sm">
                   <strong className="block text-lg text-[#243247]" style={{ color }}>{value}</strong>
@@ -2193,9 +2193,9 @@ function LoginScreen({
           {(isRegister || (!isResetting && mode === "login")) && (
             <div className="mt-5 flex items-center gap-2 text-xs text-[#697386]">
               <span>使用</span>
-              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "email" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} onClick={() => setContactMethod("email")}>邮箱</button>
+              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "email" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} disabled={isRegister && registerSent} onClick={() => setContactMethod("email")}>邮箱</button>
               <span className="text-[#D4C7C0]">/</span>
-              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "phone" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} onClick={() => setContactMethod("phone")}>手机号</button>
+              <button className={`rounded-full px-3 py-1.5 transition ${contactMethod === "phone" ? "bg-[#EFF8FF] font-medium text-[#28628F]" : "hover:bg-[#F4ECE8]"}`} disabled={isRegister && registerSent} onClick={() => setContactMethod("phone")}>手机号</button>
             </div>
           )}
           <div className="mt-5 space-y-4">
