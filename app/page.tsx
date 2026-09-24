@@ -247,7 +247,7 @@ export default function Home() {
   const [authReady, setAuthReady] = useState(false);
   const [view, setView] = useState<View>("today");
   const [loading, setLoading] = useState(true);
-  const [hideMeaning, setHideMeaning] = useState(false);
+  const [hiddenParts, setHiddenParts] = useState({ meaning: false, collocation: false, example: false });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [wordOrder, setWordOrder] = useState<"corpus" | "exam">("corpus");
@@ -708,12 +708,17 @@ export default function Home() {
             <h2 className="text-xl font-semibold">{title}</h2>
             <p className="mt-1 text-sm text-[#697386]">{subtitle}</p>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => setHideMeaning(!hideMeaning)}
-          >
-            {hideMeaning ? "显示答案" : "遮住中文"}
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {([
+              ["meaning", "单词释义"],
+              ["collocation", "搭配中文"],
+              ["example", "例句中文"],
+            ] as const).map(([key, label]) => (
+              <Button key={key} size="sm" variant="outline" onClick={() => setHiddenParts((previous) => ({ ...previous, [key]: !previous[key] }))}>
+                {hiddenParts[key] ? `显示${label}` : `遮住${label}`}
+              </Button>
+            ))}
+          </div>
           <div className="w-32">
             <Progress value={items.length ? (done / items.length) * 100 : 0} />
             <p className="mt-1 text-right text-xs text-[#697386]">
@@ -883,7 +888,7 @@ export default function Home() {
               <TableCell className="max-w-56 whitespace-normal align-top">
                 <span
                   className={
-                    hideMeaning
+                    hiddenParts.meaning
                       ? "select-none rounded bg-[#E9E4E1] text-transparent"
                       : ""
                   }
@@ -896,18 +901,18 @@ export default function Home() {
               <TableCell className="max-w-60 whitespace-normal align-top">
                 <div
                   className={
-                    hideMeaning
+                    hiddenParts.collocation
                       ? "select-none rounded bg-[#E9E4E1] text-transparent"
-                      : "space-y-1"
+                      : "space-y-3"
                   }
                 >
                   {formatCollocations(word.collocations).map((x) => (
-                    <div key={x.phrase} className="mb-1">
-                      <code className="block w-fit rounded-md bg-[#EFF8FF] px-1.5 py-0.5 text-xs text-[#28628F]">
+                    <div key={x.phrase} className="mb-3">
+                      <code className="block w-fit rounded-md bg-[#EFF8FF] px-2 py-1 text-sm leading-6 text-[#28628F]">
                         {x.phrase}
                       </code>
                       {x.translation && (
-                        <span className="text-xs text-[#697386]">{x.translation}</span>
+                        <span className="mt-1 block text-sm leading-6 text-[#697386]">{x.translation}</span>
                       )}
                     </div>
                   ))}
@@ -920,7 +925,7 @@ export default function Home() {
                     : <span className="text-[#8A94A4]">例句库整理中</span>}
                 </p>
                 <p
-                  className={`mt-1 text-xs text-[#697386] ${hideMeaning ? "select-none rounded bg-[#E9E4E1] text-transparent" : ""}`}
+                  className={`mt-2 text-sm leading-6 text-[#697386] ${hiddenParts.example ? "select-none rounded bg-[#E9E4E1] text-transparent" : ""}`}
                 >
                   {word.example_translation || "该例句翻译待补充"}
                 </p>
@@ -953,7 +958,7 @@ export default function Home() {
                 )}
               </TableCell>
               <TableCell className="pr-5 align-top">
-                <div className="flex min-w-56 flex-nowrap items-center justify-end gap-2">
+                <div className="flex w-32 flex-col items-stretch gap-2">
                   <button
                     className="shrink-0 rounded-lg border border-[#E5DAD4] bg-white p-1.5 text-[#A64B1C] hover:border-[#F98C53]"
                     onClick={() => openInlineCollection(word.example, word.id, word.example_translation, word.source || word.example_type)}
@@ -968,25 +973,25 @@ export default function Home() {
                     <button
                       key={p}
                       onClick={() => rateWord(word, p)}
-                      className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${word.proficiency === p ? proficiencyStyles[p] : "border-[#E5DAD4] bg-white text-[#697386] hover:border-[#F98C53]"}`}
+                      className={`flex items-center justify-center rounded-lg border px-2.5 py-1.5 text-xs transition ${word.proficiency === p ? proficiencyStyles[p] : "border-[#E5DAD4] bg-white text-[#697386] hover:border-[#F98C53]"}`}
                     >
                       {word.proficiency === p && (
-                        <Check className="mr-1 inline size-3" />
+                        <Check className="mr-1 size-3" />
                       )}
                       {labels[p]}
                     </button>
                   ))}
                 </div>
+                {inlineCollection?.wordId === word.id && (
+                  <div className="mt-3 w-[min(28rem,calc(100vw-3rem))]">
+                    <InlineCollectionPanel />
+                  </div>
+                )}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-        {inlineCollection?.wordId && words.some((word) => word.id === inlineCollection.wordId) && (
-          <div className="mx-4 mb-4">
-            <InlineCollectionPanel />
-          </div>
-        )}
       </div>
     );
   }
