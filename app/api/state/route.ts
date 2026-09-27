@@ -403,7 +403,7 @@ export async function GET(request: Request) {
       wordbook: wordbookRows.map((row) => ({ ...shapeWord(wordById.get(Number(row.word_id)) || {}, lexicon, progressByWord.get(Number(row.word_id))), note: row.note || "", source_context: row.source_context || "", added_at: row.created_at })),
       drafts: drafts.map((row) => ({ id: String(row.id), title: String(row.title || "未命名便签"), text: String(row.text_content || ""), drawing: String(row.drawing_data || ""), updated_at: String(row.updated_at || row.created_at || "") })),
       highlights: highlights.map((row) => ({ ...row, content: row.selected_text })),
-      settings: { new_target: settings.daily_new_target, review_target: settings.weak_review_target, reminder_time: String(settings.reminder_time).slice(0, 5), track: settings.default_track || "cet6" },
+      settings: { new_target: settings.daily_new_target, review_target: settings.weak_review_target, reminder_time: String(settings.reminder_time).slice(0, 5), reminder_enabled: settings.reminder_enabled !== false, track: settings.default_track || "cet6" },
       logs: logs.map((row) => ({ ...row, import_date: String(row.created_at).slice(0, 10) })), history: historyRows,
       user: { id: user.id, email: user.email || "", displayName: profile.display_name, authProvider: "password", role: profile.role },
       corpus: { source: "1800 核心词 Excel", count: lexicon.entries.length, days: Math.ceil(lexicon.entries.length / Number(settings.daily_new_target || 20)), importedHistoryDays: history.length },
@@ -549,7 +549,7 @@ export async function POST(request: Request) {
     }
     if (action === "settings") {
       const track = ["cet4", "cet6", "mixed", "custom"].includes(String(body.track)) ? String(body.track) : "cet6";
-      await patchRows("user_settings", `user_id=eq.${user.id}`, { daily_new_target: Math.max(1, Math.min(200, Number(body.newTarget) || 20)), weak_review_target: Math.max(0, Math.min(200, Number(body.reviewTarget) || 20)), reminder_time: String(body.reminderTime || "20:30"), default_track: track });
+      await patchRows("user_settings", `user_id=eq.${user.id}`, { daily_new_target: Math.max(1, Math.min(200, Number(body.newTarget) || 20)), weak_review_target: Math.max(0, Math.min(200, Number(body.reviewTarget) || 20)), reminder_time: String(body.reminderTime || "20:30"), reminder_enabled: body.reminderEnabled !== false, default_track: track });
       return Response.json({ ok: true });
     }
     return Response.json({ error: "未知操作" }, { status: 400 });
