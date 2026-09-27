@@ -83,7 +83,14 @@ async function loadLexicon() {
   const senses = senseRows.filter((row) => corpusWordIds.has(Number(row.word_id)));
   const senseIds = new Set(senses.map((row) => Number(row.id)));
   const collocations = collocationRows.filter((row) => senseIds.has(Number(row.sense_id)));
-  const examples = exampleRows.filter((row) => senseIds.has(Number(row.sense_id)));
+  // Only show verified CET-6 original sentences or licensed dictionary examples.
+  // Unverified generated "six-level style" sentences remain in storage for audit,
+  // but are never presented as learning material.
+  const examples = exampleRows.filter((row) =>
+    senseIds.has(Number(row.sense_id)) &&
+    Boolean(row.verified) &&
+    ["exam", "dictionary"].includes(String(row.source_type)),
+  );
   const sensesByWord = new Map<number, Row[]>();
   const collocationsBySense = new Map<number, Row[]>();
   const examplesBySense = new Map<number, Row[]>();
@@ -300,6 +307,7 @@ async function ensureTodayTask(userId: string, settings: Row, lexicon: Lexicon, 
       })), "user_id,word_id,track");
     items = await getRows(`daily_task_items?select=*&task_id=eq.${task.id}&order=position`);
   }
+  items.sort((a, b) => Number(Boolean(b.added_manually)) - Number(Boolean(a.added_manually)) || Number(a.position) - Number(b.position));
   return { ...task, yesterday_review_target: yesterdayTask.length ? inserts.filter((row) => row.item_kind === "review_yesterday").length + Number(task.yesterday_review_target || 0) : 0, task_date: date, items } as Row & { items: Row[] };
 }
 
@@ -310,26 +318,18 @@ function shapeWord(word: Row, lexicon: Lexicon, progress?: Row, item?: Row) {
   const entry = lexicon.entryByWord.get(Number(word.id)) || {};
   const comparison = lexicon.comparisonsByWord.get(Number(word.id)) || {};
   const storedSentence = String(example.sentence || "").trim();
-  // The original 1,800-word spreadsheet contains meanings and collocations but
-  // no examples. A local sentence is shown until the offline CET-6 corpus
-  // import replaces it; no browser-side dictionary request is made.
-  const generated = !storedSentence;
-  const partOfSpeech = String(sense.part_of_speech || "");
-  const theme = String(entry.theme || "academic study").replace(/[，、；。].*$/, "") || "academic study";
-  const lemma = String(word.lemma || "");
-  const fallbackSentence = contextualExample(lemma, partOfSpeech, theme);
-  const fallbackTranslation = `在${theme}语境中，这句话强调“${String(sense.core_meaning || "该词的核心含义")}”。`;
   return {
     id: Number(word.id), word: word.lemma, phonetic: word.phonetic_uk || word.phonetic_us || "",
     phonetic_uk: word.phonetic_uk || "", phonetic_us: word.phonetic_us || "",
-    part_of_speech: partOfSpeech, core_meaning: sense.core_meaning || "释义待补充",
+    part_of_speech: String(sense.part_of_speech || ""), core_meaning: sense.core_meaning || "释义待补充",
     meanings: senses.map((row) => ({ part_of_speech: row.part_of_speech || "", meaning: row.core_meaning || "" })),
-    collocations: senses.flatMap((row) => (lexicon.collocationsBySense.get(Number(row.id)) || []).map((item) => ({ phrase: item.content || "", translation: item.translation || "" }))),
-    example: storedSentence || fallbackSentence, example_translation: String(example.translation || "").trim() || fallbackTranslation,
-    example_type: generated ? "语境助记句" : example.source_type === "exam" ? "真题原句" : example.source_type === "dictionary" ? "词典例句" : "六级语境助记句",
-    source: generated ? "溯·辞本地语境例句" : example.source_label || entry.selection_source || "1800 核心词 Excel",
+    collocations: senses.flatMap((row) => (lexicon.collocationsBySense.get(Number(row.id)) || []).map((item) => ({ phrase: item.content || "", translation: item.translation || "" }))).slice(0, 3),
+    example: storedSentence,
+    example_translation: storedSentence ? String(example.translation || "").trim() : "",
+    example_type: !storedSentence ? "例句待补" : example.source_type === "exam" ? "真题原句" : "Oxford 词典例句",
+    source: !storedSentence ? "等待导入真题或 Oxford 词典例句" : example.source_label || "",
     comparison: comparison.distinction ? { similarWords: comparison.similar_words || [], distinction: comparison.distinction, contrastExample: comparison.contrast_example || "" } : null,
-    example_is_fallback: generated,
+    example_is_fallback: !storedSentence,
     status: progress?.status || "unlearned", proficiency: progress?.proficiency || null,
     first_learned_at: progress?.first_learned_at || null, last_reviewed_at: progress?.last_reviewed_at || null,
     next_review_at: progress?.next_review_at || null, review_count: Number(progress?.review_count || 0),
@@ -339,19 +339,6 @@ function shapeWord(word: Row, lexicon: Lexicon, progress?: Row, item?: Row) {
     task_item_id: item?.id, item_type: item ? (item.item_kind === "new" ? "new" : "review") : undefined,
     completed: Boolean(item?.completed),
   };
-}
-
-function contextualExample(word: string, partOfSpeech: string, theme: string) {
-  const lower = word.toLowerCase();
-  if (/adv\.?|副词/i.test(partOfSpeech) || lower.endsWith("ly"))
-    return `The team examined the issue ${word} before making a decision.`;
-  if (/adj\.?|形容词/i.test(partOfSpeech))
-    return `The study offers a ${word} perspective on ${theme}.`;
-  if (/v\.?|verb|动词/i.test(partOfSpeech))
-    return `The researchers aim to ${word} the issue through careful analysis.`;
-  if (/prep|conj|介词|连词/i.test(partOfSpeech))
-    return `The idea was discussed ${word} the wider context of ${theme}.`;
-  return `The report highlights the role of ${word} in ${theme}.`;
 }
 
 async function context(request: Request) {
@@ -372,12 +359,14 @@ export async function GET(request: Request) {
   try {
     const full = new URL(request.url).searchParams.get("full") === "1";
     const { user, profile, settings, progressRows, task, lexicon } = await context(request);
-    const [collections, tags, highlights, logs, tasks] = await Promise.all([
+    const [collections, tags, highlights, logs, tasks, wordbookRows, drafts] = await Promise.all([
       getRows(`writing_collections?select=*&user_id=eq.${user.id}&order=created_at.desc`),
       getRows("writing_collection_tags?select=collection_id,tag"),
       getRows(`highlights?select=*&user_id=eq.${user.id}&order=created_at.desc`),
       getRows(`import_logs?select=*&user_id=eq.${user.id}&order=created_at.desc&limit=20`),
       getRows(`daily_tasks?select=*&user_id=eq.${user.id}&order=task_date.desc&limit=90`),
+      getRows(`user_wordbook_entries?select=*&user_id=eq.${user.id}&order=created_at.desc`),
+      getRows(`user_drafts?select=*&user_id=eq.${user.id}&order=updated_at.desc`),
     ]);
     const progressByWord = new Map(progressRows.map((row) => [Number(row.word_id), row]));
     const wordById = new Map(lexicon.words.map((row) => [Number(row.id), row]));
@@ -411,6 +400,8 @@ export async function GET(request: Request) {
       task: { ...task, review_target: Number(task.weak_review_target || 0) + Number(task.yesterday_review_target || 0) },
       taskItems, words, wordsLoaded: full, summary,
       collections: collections.map((row) => ({ ...row, topic: topicsByCollection.get(String(row.id))?.[0] || "通用", source: row.source_label })),
+      wordbook: wordbookRows.map((row) => ({ ...shapeWord(wordById.get(Number(row.word_id)) || {}, lexicon, progressByWord.get(Number(row.word_id))), note: row.note || "", source_context: row.source_context || "", added_at: row.created_at })),
+      drafts: drafts.map((row) => ({ id: String(row.id), title: String(row.title || "未命名便签"), text: String(row.text_content || ""), drawing: String(row.drawing_data || ""), updated_at: String(row.updated_at || row.created_at || "") })),
       highlights: highlights.map((row) => ({ ...row, content: row.selected_text })),
       settings: { new_target: settings.daily_new_target, review_target: settings.weak_review_target, reminder_time: String(settings.reminder_time).slice(0, 5), track: settings.default_track || "cet6" },
       logs: logs.map((row) => ({ ...row, import_date: String(row.created_at).slice(0, 10) })), history: historyRows,
@@ -445,6 +436,43 @@ export async function POST(request: Request) {
       await insertRows("review_records", { user_id: user.id, word_id: wordId, task_item_id: itemId || null, task_date: date, proficiency,
         previous_proficiency: current.proficiency || null, interval_days: interval, next_review_at: shiftDate(date, interval) });
       return Response.json({ ok: true, nextReviewAt: shiftDate(date, interval) });
+    }
+    if (action === "add-to-wordbook") {
+      const wordId = Number(body.wordId);
+      if (!wordId || !lexicon.words.some((row) => Number(row.id) === wordId))
+        return Response.json({ error: "单词不存在" }, { status: 400 });
+      await insertRows("user_wordbook_entries", {
+        user_id: user.id, word_id: wordId,
+        source_context: String(body.sourceContext || "例句生词"),
+        note: String(body.note || ""),
+      }, "user_id,word_id");
+      return Response.json({ ok: true });
+    }
+    if (action === "remove-from-wordbook") {
+      const wordId = Number(body.wordId);
+      await dbRequest(`user_wordbook_entries?user_id=eq.${user.id}&word_id=eq.${wordId}`, { method: "DELETE", prefer: "return=minimal" });
+      return Response.json({ ok: true });
+    }
+    if (action === "save-draft") {
+      const title = String(body.title || "未命名便签").trim().slice(0, 80) || "未命名便签";
+      const text = String(body.text || "").slice(0, 20_000);
+      const drawing = String(body.drawing || "").slice(0, 2_000_000);
+      const id = String(body.id || "");
+      if (id) {
+        const existing = await getRows(`user_drafts?select=id&id=eq.${id}&user_id=eq.${user.id}&limit=1`);
+        if (!existing.length) return Response.json({ error: "草稿不存在或无权修改" }, { status: 404 });
+        await patchRows("user_drafts", `id=eq.${id}&user_id=eq.${user.id}`, { title, text_content: text, drawing_data: drawing, updated_at: new Date().toISOString() });
+      } else {
+        const created = await insertRows("user_drafts", { user_id: user.id, title, text_content: text, drawing_data: drawing });
+        return Response.json({ ok: true, id: String(created[0]?.id || "") });
+      }
+      return Response.json({ ok: true, id });
+    }
+    if (action === "delete-draft") {
+      const id = String(body.id || "");
+      if (!id) return Response.json({ error: "草稿 ID 缺失" }, { status: 400 });
+      await dbRequest(`user_drafts?id=eq.${id}&user_id=eq.${user.id}`, { method: "DELETE", prefer: "return=minimal" });
+      return Response.json({ ok: true });
     }
     if (action === "add-to-today") {
       const itemKind = body.itemType === "review" ? "review_weak" : "new";
