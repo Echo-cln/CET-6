@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Bookmark,
@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/table";
 
 type Proficiency = "unfamiliar" | "familiar" | "mastered";
-type View = "today" | "words" | "review" | "writing" | "stats" | "settings";
+type View = "today" | "words" | "wordbook" | "drafts" | "review" | "writing" | "stats" | "settings";
 type Word = {
   id: number;
   word: string;
@@ -97,6 +97,8 @@ type Highlight = {
   color: string;
   note: string;
 };
+type WordbookItem = Word & { note: string; source_context: string; added_at: string };
+type Draft = { id: string; title: string; text: string; drawing: string; updated_at: string };
 type State = {
   date: string;
   task: { new_target: number; review_target: number };
@@ -112,6 +114,8 @@ type State = {
     reviewCount: number;
   };
   collections: Collection[];
+  wordbook: WordbookItem[];
+  drafts: Draft[];
   highlights: Highlight[];
   settings: {
     new_target: number;
@@ -261,8 +265,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const nav: { id: View; label: string; icon: typeof BookOpen }[] = [
   { id: "today", label: "今日任务", icon: BookOpen },
   { id: "words", label: "词汇总表", icon: LibraryBig },
+  { id: "wordbook", label: "生词本", icon: Bookmark },
   { id: "review", label: "复习中心", icon: RotateCcw },
   { id: "writing", label: "写作金句库", icon: Bookmark },
+  { id: "drafts", label: "草稿本", icon: Pencil },
   { id: "stats", label: "学习统计", icon: TrendingUp },
   { id: "settings", label: "设置", icon: Settings },
 ];
@@ -420,14 +426,14 @@ export default function Home() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as { error?: string; [key: string]: unknown };
     if (!response.ok) {
       toast.error(payload.error || "保存失败");
       return false;
     }
     if (success) toast.success(success);
     await load(Boolean(data?.wordsLoaded));
-    return true;
+    return payload;
   };
   const rateWord = async (word: Word, proficiency: Proficiency) => {
     if (!data || !accessToken) return;
@@ -954,10 +960,17 @@ export default function Home() {
                 >
                   {cleanDisplayText(word.example_translation, 300) || "该例句翻译待补充"}
                 </p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="text-[11px]">
                     {word.example_type}
                   </Badge>
+                  <button
+                    type="button"
+                    className="rounded-md border border-[#E5DAD4] px-2 py-0.5 text-[11px] text-[#A64B1C] hover:border-[#F98C53]"
+                    onClick={() => mutate({ action: "add-to-wordbook", wordId: word.id, sourceContext: "例句关联词" }, "已记入生词本")}
+                  >
+                    {(appData.wordbook || []).some((item) => item.id === word.id) ? "已在生词本" : "记为生词"}
+                  </button>
                   {word.source && (
                     <span className="text-[11px] text-[#697386]">
                       {word.source}
@@ -1057,6 +1070,165 @@ export default function Home() {
     );
   }
 
+  function WordbookView() {
+    const items = appData.wordbook || [];
+    return (
+      <div className="space-y-5">
+        <PageTitle
+          title="生词本"
+          note="把例句中想单独回收的词收进这里；加入今日任务后会置顶显示。"
+          action={<Badge className="bg-[#D2E0AA] text-[#46582B]">当前词本：CET-6 1800</Badge>}
+        />
+        {items.length ? (
+          <section className="overflow-hidden rounded-3xl border bg-white shadow-sm">
+            <VocabularyTable words={items} />
+          </section>
+        ) : (
+          <section className="rounded-3xl border border-dashed bg-white p-14 text-center">
+            <Bookmark className="mx-auto mb-3 size-8 text-[#A64B1C]" />
+            <h2 className="font-semibold">你的生词本还是空的</h2>
+            <p className="mt-2 text-sm text-[#697386]">在例句或词汇总表中点击“记为生词”，需要时再加入今日复习。</p>
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  function DraftsView() {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const drawingRef = useRef(false);
+    const [draftId, setDraftId] = useState<string | null>(null);
+    const [title, setTitle] = useState("未命名便签");
+    const [mode, setMode] = useState<"text" | "draw">("text");
+    const [text, setText] = useState("");
+    const [drawing, setDrawing] = useState("");
+    const [color, setColor] = useState("#243247");
+    const [brush, setBrush] = useState(4);
+
+    const restoreCanvas = useCallback((data = "") => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#FFFDFB";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      if (!data) return;
+      const image = new Image();
+      image.onload = () => context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      image.src = data;
+    }, []);
+
+    useEffect(() => { restoreCanvas(drawing); }, [drawing, restoreCanvas]);
+
+    const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current!;
+      const rect = canvas.getBoundingClientRect();
+      return { x: (event.clientX - rect.left) * (canvas.width / rect.width), y: (event.clientY - rect.top) * (canvas.height / rect.height) };
+    };
+    const beginDraw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const p = point(event);
+      drawingRef.current = true;
+      canvas.setPointerCapture(event.pointerId);
+      context.strokeStyle = color;
+      context.lineWidth = brush;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(p.x, p.y);
+    };
+    const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!drawingRef.current) return;
+      const context = canvasRef.current?.getContext("2d");
+      if (!context) return;
+      const p = point(event);
+      context.lineTo(p.x, p.y);
+      context.stroke();
+    };
+    const endDraw = () => {
+      if (!drawingRef.current) return;
+      drawingRef.current = false;
+      const canvas = canvasRef.current;
+      if (canvas) setDrawing(canvas.toDataURL("image/png"));
+    };
+    const openDraft = (draft: Draft) => {
+      setDraftId(draft.id);
+      setTitle(draft.title);
+      setText(draft.text);
+      setDrawing(draft.drawing);
+    };
+    const newDraft = () => {
+      setDraftId(null);
+      setTitle("未命名便签");
+      setText("");
+      setDrawing("");
+      setMode("text");
+    };
+    const saveDraft = async () => {
+      const result = await mutate({ action: "save-draft", id: draftId, title, text, drawing }, "草稿已保存");
+      if (result && typeof result === "object" && typeof result.id === "string") setDraftId(result.id);
+    };
+
+    return (
+      <div className="space-y-5">
+        <PageTitle
+          title="草稿本"
+          note="文字或手写都能保存到当前账户；便签会在这里留下历史记录。"
+          action={<Button onClick={newDraft}><Plus className="size-4" />新建便签</Button>}
+        />
+        <section className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="rounded-3xl border bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">历史便签</h2>
+              <span className="text-xs text-[#697386]">{(appData.drafts || []).length} 条</span>
+            </div>
+            <div className="max-h-[52rem] space-y-2 overflow-y-auto pr-1">
+              {(appData.drafts || []).map((draft) => (
+                <div key={draft.id} className={`group rounded-2xl border p-3 transition ${draft.id === draftId ? "border-[#ABD7FB] bg-[#EFF8FF]" : "hover:border-[#D8CDC6]"}`}>
+                  <button className="block w-full text-left" onClick={() => openDraft(draft)}>
+                    <b className="block truncate text-sm">{draft.title}</b>
+                    <span className="mt-1 block truncate text-xs text-[#697386]">{draft.text || (draft.drawing ? "手写便签" : "空白便签")}</span>
+                  </button>
+                  <button className="mt-2 text-xs text-[#A64B1C] hover:underline" onClick={() => mutate({ action: "delete-draft", id: draft.id }, "草稿已删除")}>删除</button>
+                </div>
+              ))}
+              {!(appData.drafts || []).length && <p className="p-3 text-sm leading-6 text-[#697386]">新建一张便签，之后会在这里保留历史。</p>}
+            </div>
+          </aside>
+          <div className="rounded-3xl border bg-[#FFFDFB] p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Input className="max-w-sm bg-white font-medium" value={title} onChange={(event) => setTitle(event.target.value)} aria-label="便签标题" />
+              <div className="grid grid-cols-2 rounded-xl border bg-[#F8F3F0] p-1">
+                <button className={`rounded-lg px-4 py-2 text-sm ${mode === "text" ? "bg-white font-semibold shadow-sm" : "text-[#697386]"}`} onClick={() => setMode("text")}>文本框</button>
+                <button className={`rounded-lg px-4 py-2 text-sm ${mode === "draw" ? "bg-white font-semibold shadow-sm" : "text-[#697386]"}`} onClick={() => setMode("draw")}>手写</button>
+              </div>
+            </div>
+            {mode === "text" ? (
+              <textarea className="mt-5 min-h-[30rem] w-full resize-y rounded-2xl border bg-white p-5 text-base leading-8 outline-none focus:border-[#ABD7FB]" placeholder="在这里写下联想、易错点或练习句……" value={text} onChange={(event) => setText(event.target.value)} />
+            ) : (
+              <div className="mt-5">
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl bg-[#F8F3F0] p-3">
+                  <span className="text-xs text-[#697386]">笔触</span>
+                  {["#243247", "#A64B1C", "#28628F", "#5B7F45", "#8F5DA8"].map((value) => <button key={value} aria-label={value} onClick={() => setColor(value)} className={`size-6 rounded-full border-2 ${color === value ? "border-[#243247] ring-2 ring-[#ABD7FB]" : "border-white"}`} style={{ background: value }} />)}
+                  <input aria-label="笔触粗细" type="range" min="2" max="16" value={brush} onChange={(event) => setBrush(Number(event.target.value))} />
+                  <Button size="sm" variant="outline" onClick={() => { setDrawing(""); restoreCanvas(""); }}>清空画布</Button>
+                </div>
+                <canvas ref={canvasRef} width={960} height={560} className="aspect-[12/7] w-full touch-none rounded-2xl border bg-white" onPointerDown={beginDraw} onPointerMove={draw} onPointerUp={endDraw} onPointerCancel={endDraw} />
+              </div>
+            )}
+            <div className="mt-4 flex justify-end">
+              <Button onClick={saveDraft}><Bookmark className="size-4" />保存便签</Button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function WordsView() {
     if (!appData.wordsLoaded)
       return <PageLoading title="正在加载完整词汇表…" />;
@@ -1151,14 +1323,14 @@ export default function Home() {
                   </TableCell>
                   <TableCell className="align-top">
                     {["learned", "learned_unrated"].includes(word.status) ? (
-                      <div className="w-full space-y-1">
+                      <div className="flex w-full flex-col items-start gap-2">
                         <Input
                           aria-label={`${word.word} 的下次复习日期`}
                           type="date"
                           value={word.next_review_at || ""}
                           onChange={(event) => void mutate({ action: "set-next-review", wordId: word.id, nextReviewAt: event.target.value }, "复习日期已调整")}
                         />
-                        {word.next_review_at && word.next_review_at < appData.date && <span className="text-xs text-[#A64B1C]">已到期，已优先纳入今日候选</span>}
+                        {word.next_review_at && word.next_review_at < appData.date && <span className="text-xs leading-5 text-[#A64B1C]">已到期<br />今日复习优先</span>}
                       </div>
                     ) : "—"}
                   </TableCell>
@@ -1871,11 +2043,21 @@ export default function Home() {
       <div className="mx-auto max-w-[1500px] px-4 py-7 lg:px-8">
         {view === "today" && <TodayView />}
         {view === "words" && WordsView()}
+        {view === "wordbook" && <WordbookView />}
         {view === "review" && <ReviewView />}
         {view === "writing" && <WritingView />}
+        {view === "drafts" && <DraftsView />}
         {view === "stats" && <StatsView />}
         {view === "settings" && <SettingsView />}
       </div>
+      <button
+        type="button"
+        onClick={() => setView("drafts")}
+        className="fixed bottom-6 right-6 z-30 grid size-12 place-items-center rounded-full border border-[#E5D5CC] bg-[#FFFDFB] text-[#A64B1C] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#FFF4ED]"
+        title="打开草稿本"
+      >
+        <Pencil className="size-5" />
+      </button>
       <InlineCollectionPanel />
       {selection && (
         <div
