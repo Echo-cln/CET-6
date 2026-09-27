@@ -1006,6 +1006,12 @@ export default function Home() {
                   >
                     <Bookmark className="size-4" />
                   </button>
+                  <button
+                    className="rounded-lg border border-[#ABD7FB] bg-[#EFF8FF] px-2 py-1.5 text-xs text-[#28628F] hover:border-[#28628F]"
+                    onClick={() => mutate({ action: "add-to-today", wordId: word.id, itemType: "review" }, "已加入今日复习，并置顶显示")}
+                  >
+                    加入今日复习
+                  </button>
                   {(
                     ["unfamiliar", "familiar", "mastered"] as Proficiency[]
                   ).map((p) => (
@@ -1355,7 +1361,7 @@ export default function Home() {
                           {
                             action: "add-to-today",
                             wordId: word.id,
-                            itemType: ["learned", "learned_unrated"].includes(word.status) ? "review" : "new",
+                            itemType: "review",
                           },
                           "已加入今日任务，并置顶显示",
                         )}
