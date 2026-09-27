@@ -137,13 +137,32 @@ type State = {
 };
 
 
+function cleanDisplayText(value: unknown, limit = 240) {
+  const text = String(value || "")
+    .replace(/^\s*(?:[A-Z]|\d+)\)\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  const compact = text.replace(/[\s,，.。;；、:：]/g, "");
+  const repeated = /([\u4E00-\u9FFF]{1,8})(?:\1){3,}/u.test(compact);
+  const looksLikeAnswerKey = /(题干|原文|答案为|该段|关键词|对应原文|选项)/.test(text);
+  return repeated || text.length > limit || (looksLikeAnswerKey && text.length > 120) ? "" : text;
+}
+
+function cleanExample(value: unknown) {
+  return cleanDisplayText(value, 300);
+}
+
 function formatCollocations(collocations: unknown) {
   if (!Array.isArray(collocations)) return [];
   return collocations.map((item: any) => {
-    if (typeof item === "string") return { phrase: item, translation: "" };
-    return {
+    const source = typeof item === "string" ? { phrase: item, translation: "" } : {
       phrase: item?.phrase || item?.content || "",
       translation: item?.translation || "",
+    };
+    return {
+      phrase: cleanDisplayText(source.phrase, 100),
+      translation: cleanDisplayText(source.translation, 100),
     };
   }).filter((x) => x.phrase);
 }
@@ -151,9 +170,26 @@ function formatCollocations(collocations: unknown) {
 function formatMeanings(word: Word) {
   const raw = (word as any).meanings;
   if (Array.isArray(raw) && raw.length) {
-    return raw.map((m:any) => `${m.part_of_speech || m.pos || ""} ${m.definition || m.meaning || ""}`.trim());
+    return raw
+      .map((m:any) => cleanDisplayText(`${m.part_of_speech || m.pos || ""} ${m.definition || m.meaning || ""}`.trim(), 180))
+      .filter(Boolean);
   }
-  return [`${word.part_of_speech || ""} ${word.core_meaning || ""}`.trim()];
+  return [cleanDisplayText(`${word.part_of_speech || ""} ${word.core_meaning || ""}`.trim(), 180)].filter(Boolean);
+}
+
+function comparisonLines(word: Word) {
+  const raw = cleanDisplayText(word.comparison?.distinction, 420)
+    .replace(/使用时先核对词性、搭配和上下文，避免仅凭词形猜义。?/g, "")
+    .trim();
+  if (!raw) return { targetTail: "", similar: [] as string[] };
+  const pieces = raw.split(/[；;]+/).map((item) => item.trim()).filter(Boolean);
+  const escaped = word.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const target = new RegExp(`^${escaped}\\b\\s*`, "i");
+  const first = pieces.shift() || "";
+  return {
+    targetTail: first.replace(target, "").trim(),
+    similar: pieces.map((item) => item.replace(target, "").trim()).filter(Boolean),
+  };
 }
 
 function calculateStudyStreak(history: Record<string, unknown>[]) {
@@ -711,7 +747,6 @@ export default function Home() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             {([
               ["meaning", "单词释义"],
-              ["collocation", "搭配中文"],
               ["example", "例句中文"],
             ] as const).map(([key, label]) => (
               <Button key={key} size="sm" variant="outline" onClick={() => setHiddenParts((previous) => ({ ...previous, [key]: !previous[key] }))}>
@@ -742,7 +777,8 @@ export default function Home() {
     const update = (key: keyof typeof inlineCollection, value: string) =>
       setInlineCollection({ ...inlineCollection, [key]: value });
     return (
-      <div className="mt-4 max-h-80 overflow-y-auto rounded-2xl border border-[#F2B08D] bg-[#FFF9F5] p-4 shadow-inner">
+      <div className="fixed inset-0 z-[70] grid place-items-center bg-[#243247]/25 p-4 backdrop-blur-[1px]" onMouseDown={() => setInlineCollection(null)}>
+        <div className="max-h-[min(42rem,calc(100vh-2rem))] w-full max-w-xl overflow-y-auto rounded-3xl border border-[#E5D5CC] bg-[#FFFDFB] p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold">收藏到写作金句</h3>
@@ -832,7 +868,7 @@ export default function Home() {
             />
           </label>
         </div>
-        <div className="mt-3 flex justify-end gap-2">
+        <div className="mt-4 flex justify-end gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -842,8 +878,9 @@ export default function Home() {
           </Button>
           <Button size="sm" onClick={saveInlineCollection}>
             <Bookmark className="size-4" />
-            保存收藏
+            收藏并关闭
           </Button>
+        </div>
         </div>
       </div>
     );
@@ -886,33 +923,21 @@ export default function Home() {
                 </div>
               </TableCell>
               <TableCell className="max-w-56 whitespace-normal align-top">
-                <span
-                  className={
-                    hiddenParts.meaning
-                      ? "select-none rounded bg-[#E9E4E1] text-transparent"
-                      : ""
-                  }
-                >
+                <span className={hiddenParts.meaning ? "select-none rounded bg-[#E9E4E1] text-transparent" : ""}>
                   {formatMeanings(word).map((m) => (
-                    <div key={m}>{m}</div>
+                    <div key={m} className="leading-8 [&+div]:mt-2">{m}</div>
                   ))}
                 </span>
               </TableCell>
               <TableCell className="max-w-60 whitespace-normal align-top">
-                <div
-                  className={
-                    hiddenParts.collocation
-                      ? "select-none rounded bg-[#E9E4E1] text-transparent"
-                      : "space-y-3"
-                  }
-                >
+                <div className="space-y-4">
                   {formatCollocations(word.collocations).map((x) => (
-                    <div key={x.phrase} className="mb-3">
-                      <code className="block w-fit rounded-md bg-[#EFF8FF] px-2 py-1 text-sm leading-6 text-[#28628F]">
+                    <div key={x.phrase} className="space-y-2">
+                      <code className="block w-fit rounded-lg bg-[#EFF8FF] px-3 py-1.5 text-sm leading-6 text-[#28628F]">
                         {x.phrase}
                       </code>
                       {x.translation && (
-                        <span className="mt-1 block text-sm leading-6 text-[#697386]">{x.translation}</span>
+                        <span className="block text-sm leading-7 text-[#697386]">{x.translation}</span>
                       )}
                     </div>
                   ))}
@@ -920,14 +945,14 @@ export default function Home() {
               </TableCell>
               <TableCell className="whitespace-normal align-top">
                 <p className="leading-6">
-                  {word.example
-                    ? renderMarkedText(word.example, word.word, appData.highlights.filter((h) => h.word_id === word.id))
-                    : <span className="text-[#8A94A4]">例句库整理中</span>}
+                  {cleanExample(word.example)
+                    ? renderMarkedText(cleanExample(word.example), word.word, appData.highlights.filter((h) => h.word_id === word.id))
+                    : <span className="text-[#8A94A4]">例句数据待整理</span>}
                 </p>
                 <p
                   className={`mt-2 text-sm leading-6 text-[#697386] ${hiddenParts.example ? "select-none rounded bg-[#E9E4E1] text-transparent" : ""}`}
                 >
-                  {word.example_translation || "该例句翻译待补充"}
+                  {cleanDisplayText(word.example_translation, 300) || "该例句翻译待补充"}
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   <Badge variant="outline" className="text-[11px]">
@@ -961,9 +986,9 @@ export default function Home() {
                 <div className="flex w-32 flex-col items-stretch gap-2">
                   <button
                     className="shrink-0 rounded-lg border border-[#E5DAD4] bg-white p-1.5 text-[#A64B1C] hover:border-[#F98C53]"
-                    onClick={() => openInlineCollection(word.example, word.id, word.example_translation, word.source || word.example_type)}
+                    onClick={() => openInlineCollection(cleanExample(word.example), word.id, cleanDisplayText(word.example_translation, 300), word.source || word.example_type)}
                     title="收藏到写作金句"
-                    disabled={!word.example}
+                    disabled={!cleanExample(word.example)}
                   >
                     <Bookmark className="size-4" />
                   </button>
@@ -982,11 +1007,7 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
-                {inlineCollection?.wordId === word.id && (
-                  <div className="mt-3 w-[min(28rem,calc(100vw-3rem))]">
-                    <InlineCollectionPanel />
-                  </div>
-                )}
+
               </TableCell>
             </TableRow>
           ))}
@@ -999,20 +1020,23 @@ export default function Home() {
   function TaskInsights({ items }: { items: Word[] }) {
     const focus = items.filter((word, index, list) => list.findIndex((item) => item.id === word.id) === index);
     const comparisons = focus.filter((word) => word.comparison?.distinction);
-    const sentences = focus.filter((word) => word.example);
+    const sentences = focus.filter((word) => cleanExample(word.example));
     return (
       <section className="grid gap-5 lg:grid-cols-2">
         <div className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
           <TitleIcon color="#D2E0AA" icon={Sparkles} title="相近词辨析" note="放在任务最后，按今天的词义边界集中记忆" />
           {comparisons.length ? (
             <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
-              {comparisons.map((word) => (
-                <div key={word.id} className="rounded-2xl border border-[#E7DFD8] bg-[#FCFAF7] p-3 text-sm leading-6 text-[#586274]">
-                  <b className="mr-1 text-[#7F3C1D]">{word.word}</b>
-                  {word.comparison?.distinction}
-                  {word.comparison?.contrastExample && <p className="mt-1 text-xs">{word.comparison.contrastExample}</p>}
-                </div>
-              ))}
+              {comparisons.map((word) => {
+                const comparison = comparisonLines(word);
+                return (
+                  <div key={word.id} className="rounded-2xl border border-[#E7DFD8] bg-[#FCFAF7] p-4 text-sm leading-7 text-[#586274]">
+                    <p><b className="mr-1 text-[#7F3C1D]">{word.word}</b>{comparison.targetTail}</p>
+                    {comparison.similar.map((line) => <p key={line} className="mt-2 text-[#697386]">{line}</p>)}
+                    {cleanDisplayText(word.comparison?.contrastExample, 180) && <p className="mt-2 text-xs leading-6 text-[#697386]">{cleanDisplayText(word.comparison?.contrastExample, 180)}</p>}
+                  </div>
+                );
+              })}
             </div>
           ) : <p className="text-sm text-[#697386]">今日任务暂无相近词辨析，后续词条会在这里集中显示。</p>}
         </div>
@@ -1021,16 +1045,13 @@ export default function Home() {
           <div className="max-h-[32rem] space-y-4 overflow-y-auto pr-1">
             {sentences.map((word) => (
               <div key={word.id} className="border-b border-[#F0EAE6] pb-4 last:border-0 last:pb-0">
-                <p className="text-sm leading-7">{renderMarkedText(word.example, word.word, appData.highlights.filter((h) => h.word_id === word.id))}</p>
-                <p className="mt-1 text-xs leading-6 text-[#697386]">{word.example_translation || "中文含义待补充"}</p>
-                <Button className="mt-2" size="sm" variant="outline" onClick={() => openInlineCollection(word.example, word.id, word.example_translation, word.source || word.example_type)}>
-                  <Bookmark className="size-3.5" />收藏并编辑
-                </Button>
+                <p className="text-sm leading-7">{cleanExample(word.example) ? renderMarkedText(cleanExample(word.example), word.word, appData.highlights.filter((h) => h.word_id === word.id)) : "例句数据待整理"}</p>
+                <p className="mt-1 text-xs leading-6 text-[#697386]">{cleanDisplayText(word.example_translation, 300) || "中文含义待补充"}</p>
               </div>
             ))}
             {!sentences.length && <p className="text-sm text-[#697386]">今日词条的例句正在整理中。</p>}
           </div>
-          {inlineCollection && !inlineCollection.wordId && <InlineCollectionPanel />}
+
         </div>
       </section>
     );
@@ -1367,8 +1388,15 @@ export default function Home() {
   }
 
   function WritingReview() {
+    const seen = new Set<string>();
     const items = appData.collections
       .filter((c) => c.proficiency !== "mastered")
+      .filter((c) => {
+        const key = `${c.content.trim().toLowerCase()}|${c.translation.trim().toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .slice(0, 5);
     return (
       <section className="rounded-3xl border bg-[#FFFDFB] p-6 shadow-sm">
@@ -1848,6 +1876,7 @@ export default function Home() {
         {view === "stats" && <StatsView />}
         {view === "settings" && <SettingsView />}
       </div>
+      <InlineCollectionPanel />
       {selection && (
         <div
           className="fixed z-50 flex max-w-[min(92vw,560px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-[#E5D5CC] bg-white p-2 shadow-2xl"
@@ -2060,6 +2089,7 @@ function LoginScreen({
   const [registerSent, setRegisterSent] = useState(false);
   const [displayName, setDisplayName] = useState("Echo");
   const [busy, setBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isRegister = mode === "register";
   const isResetting = mode === "forgot";
   const switchMode = (next: "login" | "register") => {
@@ -2069,8 +2099,20 @@ function LoginScreen({
     setConfirmPassword("");
     setRegisterSent(false);
     setResetSent(false);
+    setFieldErrors({});
   };
   const submit = async () => {
+    const errors: Record<string, string> = {};
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) errors.email = "请输入正确的邮箱地址";
+    if (isRegister && !registerSent && !displayName.trim()) errors.displayName = "请填写显示名称";
+    if ((!isResetting || resetSent) && password.length < 8 && (isRegister || isResetting)) errors.password = "密码至少需要 8 位";
+    if ((isRegister || (isResetting && resetSent)) && password !== confirmPassword) errors.confirmPassword = "两次输入的密码不一致";
+    if ((registerSent || (isResetting && resetSent)) && code.length !== 6) errors.code = "请输入邮件中的 6 位验证码";
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
     setBusy(true);
     try {
       const action = isRegister
@@ -2108,7 +2150,8 @@ function LoginScreen({
       onSession({ access_token: payload.access_token, refresh_token: payload.refresh_token });
       toast.success(isRegister ? "注册成功，欢迎开始学习" : "登录成功");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "操作失败");
+      const message = error instanceof Error ? error.message : "操作失败";
+      setFieldErrors({ form: message });
     } finally {
       setBusy(false);
     }
@@ -2176,13 +2219,14 @@ function LoginScreen({
               <button className={`rounded-xl px-3 py-2.5 text-sm transition ${mode === "register" ? "bg-white font-semibold text-[#243247] shadow-sm" : "text-[#697386] hover:text-[#243247]"}`} onClick={() => switchMode("register")}>注册账户</button>
             </div>
           )}
-          <div className="mt-5 space-y-4">
-            {isRegister && !registerSent && <Field label="显示名称"><Input placeholder="例如 Echo" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>}
-            <Field label="邮箱地址"><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
-            {isRegister && registerSent && <Field label="邮箱验证码（6 位）"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
-            {isResetting && resetSent && <Field label="邮件验证码（6 位）"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /></Field>}
-            {(!isResetting || resetSent) && <Field label={isRegister || resetSent ? "设置密码（至少 8 位）" : "密码"}><Input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
-            {(isRegister || (isResetting && resetSent)) && <Field label="确认密码"><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void submit()} /></Field>}
+          <div className="mt-6 space-y-5">
+            {isRegister && !registerSent && <AuthField label="显示名称" error={fieldErrors.displayName}><Input placeholder="例如 Echo" value={displayName} onChange={(event) => { setDisplayName(event.target.value); setFieldErrors((current) => ({ ...current, displayName: "" })); }} /></AuthField>}
+            <AuthField label="邮箱地址" error={fieldErrors.email}><Input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => { setEmail(event.target.value); setFieldErrors((current) => ({ ...current, email: "" })); }} /></AuthField>
+            {isRegister && registerSent && <AuthField label="邮箱验证码（6 位）" error={fieldErrors.code}><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => { setCode(event.target.value.replace(/\D/g, "")); setFieldErrors((current) => ({ ...current, code: "" })); }} /></AuthField>}
+            {isResetting && resetSent && <AuthField label="邮件验证码（6 位）" error={fieldErrors.code}><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => { setCode(event.target.value.replace(/\D/g, "")); setFieldErrors((current) => ({ ...current, code: "" })); }} /></AuthField>}
+            {(!isResetting || resetSent) && <AuthField label={isRegister || resetSent ? "设置密码（至少 8 位）" : "密码"} error={fieldErrors.password}><Input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => { setPassword(event.target.value); setFieldErrors((current) => ({ ...current, password: "" })); }} onKeyDown={(event) => event.key === "Enter" && void submit()} /></AuthField>}
+            {(isRegister || (isResetting && resetSent)) && <AuthField label="确认密码" error={fieldErrors.confirmPassword}><Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); setFieldErrors((current) => ({ ...current, confirmPassword: "" })); }} onKeyDown={(event) => event.key === "Enter" && void submit()} /></AuthField>}
+            {fieldErrors.form && <p className="rounded-xl border border-[#F2B8B5] bg-[#FFF4F3] px-3 py-2 text-sm text-[#B63833]">{fieldErrors.form}</p>}}
             <Button className="mt-2 h-11 w-full rounded-xl bg-[#F98C53] text-[15px] font-semibold text-white shadow-lg shadow-[#F98C53]/20 hover:bg-[#E77A42]" disabled={busy} onClick={submit}>
               {busy && <Loader2 className="size-4 animate-spin" />}
               {isRegister ? registerSent ? "验证并完成注册" : "发送验证码" : isResetting ? resetSent ? "验证并重置密码" : "发送邮箱验证码" : "登录并开始学习"}
@@ -2196,6 +2240,24 @@ function LoginScreen({
         </div>
       </section>
     </main>
+  );
+}
+
+function AuthField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block space-y-2.5">
+      <span className="text-sm font-medium">{label}</span>
+      {children}
+      {error && <span className="block text-xs font-medium text-[#B63833]">{error}</span>}
+    </label>
   );
 }
 
