@@ -121,6 +121,7 @@ type State = {
     new_target: number;
     review_target: number;
     reminder_time: string;
+    reminder_enabled?: boolean;
     track: "cet4" | "cet6" | "mixed" | "custom";
   };
   logs: Record<string, unknown>[];
@@ -1335,25 +1336,34 @@ export default function Home() {
                     ) : "—"}
                   </TableCell>
                   <TableCell>{word.review_count}</TableCell>
-                  <TableCell className="pr-5 text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        mutate(
+                  <TableCell className="pr-5">
+                    <div className="flex flex-col items-stretch gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => mutate(
+                          { action: "add-to-wordbook", wordId: word.id, sourceContext: "词汇总表" },
+                          "已记入生词本",
+                        )}
+                      >
+                        <Bookmark className="size-4" />
+                        {(appData.wordbook || []).some((item) => item.id === word.id) ? "已在生词本" : "记为生词"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => mutate(
                           {
                             action: "add-to-today",
                             wordId: word.id,
-                            itemType:
-                              ["learned", "learned_unrated"].includes(word.status) ? "review" : "new",
+                            itemType: ["learned", "learned_unrated"].includes(word.status) ? "review" : "new",
                           },
-                          "已加入今日任务",
-                        )
-                      }
-                    >
-                      <Plus className="size-4" />
-                      加入今日
-                    </Button>
+                          "已加入今日任务，并置顶显示",
+                        )}
+                      >
+                        <Plus className="size-4" />
+                        加入今日
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1748,6 +1758,7 @@ export default function Home() {
       newTarget: appData.settings.new_target,
       reviewTarget: appData.settings.review_target,
       reminderTime: appData.settings.reminder_time,
+      reminderEnabled: appData.settings.reminder_enabled !== false,
       track: appData.settings.track,
     });
     const [passwordForm, setPasswordForm] = useState({ currentPassword: "", password: "", confirmPassword: "" });
@@ -1800,6 +1811,10 @@ export default function Home() {
                   }
                 />
               </Field>
+              <label className="flex items-center justify-between rounded-xl border border-[#EADFD9] bg-[#FFF9F5] px-3 py-2.5">
+                <span><b className="block text-sm">每日邮件提醒</b><span className="text-xs text-[#697386]">按提醒时间发送；需要在 Vercel 配置 SMTP 凭据。</span></span>
+                <input type="checkbox" className="size-4 accent-[#F98C53]" checked={form.reminderEnabled} onChange={(event) => setForm({ ...form, reminderEnabled: event.target.checked })} />
+              </label>
               <Field label="默认词库方向">
                 <select className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={form.track} onChange={(e) => setForm({ ...form, track: e.target.value as typeof form.track })}>
                   <option value="cet6">六级词库</option><option value="cet4">四级词库</option><option value="mixed">四、六级混合</option><option value="custom">自定义词库</option>
@@ -1813,7 +1828,7 @@ export default function Home() {
               >
                 保存设置
               </Button>
-              <Button variant="outline" className="w-fit" onClick={() => setForm({ newTarget: 20, reviewTarget: 20, reminderTime: "20:30", track: "cet6" })}>恢复推荐默认值</Button>
+              <Button variant="outline" className="w-fit" onClick={() => setForm({ newTarget: 20, reviewTarget: 20, reminderTime: "20:30", reminderEnabled: true, track: "cet6" })}>恢复推荐默认值</Button>
             </div>
           </div>
           <div className="rounded-3xl border bg-[#243247] p-6 text-white">
