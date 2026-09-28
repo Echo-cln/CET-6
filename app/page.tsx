@@ -57,7 +57,7 @@ type Word = {
   phonetic_us?: string;
   part_of_speech: string;
   core_meaning: string;
-  collocations: Array<string | { phrase?: string; translation?: string }> | string[];
+  collocations: Array<string | { phrase?: string; translation?: string; source?: string }> | string[];
   example: string;
   example_translation: string;
   example_type: string;
@@ -164,10 +164,12 @@ function formatCollocations(collocations: unknown) {
     const source = typeof item === "string" ? { phrase: item, translation: "" } : {
       phrase: item?.phrase || item?.content || "",
       translation: item?.translation || "",
+      source: item?.source || "",
     };
     return {
       phrase: cleanDisplayText(source.phrase, 100),
       translation: cleanDisplayText(source.translation, 100),
+      source: cleanDisplayText(source.source, 100),
     };
   }).filter((x) => x.phrase);
 }
@@ -435,6 +437,20 @@ export default function Home() {
     if (success) toast.success(success);
     await load(Boolean(data?.wordsLoaded));
     return payload;
+  };
+  const enrichFromFreeSources = async (word: Word) => {
+    const response = await authorizedFetch("/api/free-lexicon", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ word: word.word }),
+    });
+    const payload = (await response.json()) as { error?: string; note?: string };
+    if (!response.ok) {
+      toast.error(payload.error || "公开词典查询失败");
+      return;
+    }
+    toast.success(payload.note || "已补全公开词典数据");
+    await load(Boolean(data?.wordsLoaded));
   };
   const rateWord = async (word: Word, proficiency: Proficiency) => {
     if (!data || !accessToken) return;
@@ -943,18 +959,13 @@ export default function Home() {
                       <code className="block w-fit rounded-lg bg-[#EFF8FF] px-3 py-1.5 text-sm leading-6 text-[#28628F]">
                         {x.phrase}
                       </code>
-                      {x.translation && (
-                        <span className="block text-sm leading-7 text-[#697386]">{x.translation}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      {x.translation && (\n                        <span className="block text-sm leading-7 text-[#697386]">{x.translation}</span>\n                      )}\n                      {x.source && <span className="block text-[11px] text-[#8A94A4]">{x.source}</span>}\n                    </div>\n                  ))}\n                  {!formatCollocations(word.collocations).length && (\n                    <button type="button" onClick={() => void enrichFromFreeSources(word)} className="rounded-lg border border-dashed border-[#ABD7FB] px-3 py-2 text-xs text-[#28628F] hover:bg-[#EFF8FF]">\n                      补全公开语料搭配\n                    </button>\n                  )}\n                </div>
               </TableCell>
               <TableCell className="whitespace-normal align-top">
                 <p className="leading-6">
                   {cleanExample(word.example)
                     ? renderMarkedText(cleanExample(word.example), word.word, appData.highlights.filter((h) => h.word_id === word.id))
-                    : <span className="text-[#8A94A4]">例句数据待整理</span>}
+                    : <span className="inline-flex flex-wrap items-center gap-2 text-[#8A94A4]">例句数据待整理 <button type="button" onClick={() => void enrichFromFreeSources(word)} className="rounded-md border border-dashed border-[#ABD7FB] px-2 py-1 text-xs text-[#28628F] hover:bg-[#EFF8FF]">从公开词典补全</button></span>}
                 </p>
                 <p
                   className={`mt-2 text-sm leading-6 text-[#697386] ${hiddenParts.example ? "select-none rounded bg-[#E9E4E1] text-transparent" : ""}`}
