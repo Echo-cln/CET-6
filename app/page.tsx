@@ -953,16 +953,15 @@ export default function Home() {
                 </span>
               </TableCell>
               <TableCell className="max-w-60 whitespace-normal align-top">
-                <div className="space-y-4">
+                <div className="space-y-2.5">
                   {formatCollocations(word.collocations).map((x) => (
-                    <div key={x.phrase} className="space-y-2">
-                      <code className="block w-fit rounded-lg bg-[#EFF8FF] px-3 py-1.5 text-sm leading-6 text-[#28628F]">
+                    <div key={x.phrase} className="space-y-0.5">
+                      <code className="block w-fit rounded-lg bg-[#EFF8FF] px-3 py-1 text-sm leading-5 text-[#28628F]">
                         {x.phrase}
                       </code>
                       {x.translation && (
-                        <span className="block text-sm leading-7 text-[#697386]">{x.translation}</span>
+                        <span className="block text-sm leading-5 text-[#697386]">{x.translation}</span>
                       )}
-                      {x.source && <span className="block text-[11px] text-[#8A94A4]">{x.source}</span>}
                     </div>
                   ))}
                   {!formatCollocations(word.collocations).length && (
