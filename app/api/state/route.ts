@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import historyData from "@/data/study-history.json";
+export const dynamic = "force-dynamic";\nexport const revalidate = 0;\n\nimport historyData from "@/data/study-history.json";
 import {
   authenticate,
   dbRequest,
@@ -12,7 +12,7 @@ type Row = Record<string, any>;
 type HistoryDay = { date: string; label: string; words: string[]; reviews?: string[] };
 const history = historyData as HistoryDay[];
 const unauthorized = () => Response.json({ error: "请先登录", code: "UNAUTHORIZED" }, { status: 401 });
-const LEXICON_CACHE_TTL_MS = 10 * 60 * 1000;
+// Learning content is edited live; never serve an outdated ten-minute snapshot.\nconst LEXICON_CACHE_TTL_MS = 0;
 type Lexicon = {
   words: Row[];
   sensesByWord: Map<number, Row[]>;
