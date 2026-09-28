@@ -25,6 +25,28 @@ function usableSentence(value: unknown, word: string) {
   return sentence.length >= 12 && sentence.length <= 260 && containsWholeWord(sentence, word) ? sentence : "";
 }
 
+type TranslationPayload = { responseData?: { translatedText?: unknown } };
+
+function decodeEntities(value: string) {
+  return value
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+async function translateToChinese(sentence: string) {
+  const response = await fetch(
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(sentence)}&langpair=en%7Czh-CN`,
+    { headers: { Accept: "application/json" }, cache: "no-store" },
+  );
+  if (!response.ok) return "";
+  const payload = (await response.json()) as TranslationPayload;
+  const translation = decodeEntities(String(payload.responseData?.translatedText || "")).replace(/\s+/g, " ").trim();
+  return /[\u3400-\u9FFF]/u.test(translation) ? translation : "";
+}
+
 async function datamusePhrases(word: string) {
   const base = "https://api.datamuse.com/words";
   const [followers, predecessors] = await Promise.all([
@@ -72,8 +94,9 @@ export async function POST(request: Request) {
         .filter(Boolean),
     );
     const collocations = await datamusePhrases(word);
+    const translation = examples[0] ? await translateToChinese(examples[0]) : "";
 
-    if (examples[0]) {
+    if (examples[0] && translation) {
       const exists = await dbRequest<Row[]>(
         `vocabulary_examples?select=id&sense_id=eq.${senseId}&source_label=eq.${encodeURIComponent(FREE_DICTIONARY_LABEL)}&limit=1`,
       );
@@ -83,7 +106,7 @@ export async function POST(request: Request) {
           body: {
             sense_id: senseId,
             sentence: examples[0],
-            translation: "",
+            translation,
             source_type: "dictionary",
             source_label: FREE_DICTIONARY_LABEL,
             source_url: String(dictionary.source?.url || "") || null,
@@ -111,7 +134,11 @@ export async function POST(request: Request) {
     return Response.json({
       ok: true, example: examples[0] || "", collocations,
       source: examples[0] ? FREE_DICTIONARY_LABEL : DATAMUSE_LABEL,
-      note: examples[0] ? "已补入公开词典例句。" : "该词暂无公开词典例句，已补入高频搭配。",
+      note: examples[0] && translation
+        ? "已补入公开词典例句及中文译文。"
+        : examples[0]
+          ? "公开词典例句已找到，但免费翻译服务未返回有效中文，本次不会写入例句。"
+          : "该词暂无公开词典例句，已补入高频搭配。",
     });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "公开词典查询失败" }, { status: 500 });
