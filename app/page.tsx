@@ -959,7 +959,18 @@ export default function Home() {
                       <code className="block w-fit rounded-lg bg-[#EFF8FF] px-3 py-1.5 text-sm leading-6 text-[#28628F]">
                         {x.phrase}
                       </code>
-                      {x.translation && (\n                        <span className="block text-sm leading-7 text-[#697386]">{x.translation}</span>\n                      )}\n                      {x.source && <span className="block text-[11px] text-[#8A94A4]">{x.source}</span>}\n                    </div>\n                  ))}\n                  {!formatCollocations(word.collocations).length && (\n                    <button type="button" onClick={() => void enrichFromFreeSources(word)} className="rounded-lg border border-dashed border-[#ABD7FB] px-3 py-2 text-xs text-[#28628F] hover:bg-[#EFF8FF]">\n                      补全公开语料搭配\n                    </button>\n                  )}\n                </div>
+                      {x.translation && (
+                        <span className="block text-sm leading-7 text-[#697386]">{x.translation}</span>
+                      )}
+                      {x.source && <span className="block text-[11px] text-[#8A94A4]">{x.source}</span>}
+                    </div>
+                  ))}
+                  {!formatCollocations(word.collocations).length && (
+                    <button type="button" onClick={() => void enrichFromFreeSources(word)} className="rounded-lg border border-dashed border-[#ABD7FB] px-3 py-2 text-xs text-[#28628F] hover:bg-[#EFF8FF]">
+                      补全公开语料搭配
+                    </button>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="whitespace-normal align-top">
                 <p className="leading-6">
