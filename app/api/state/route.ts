@@ -12,7 +12,8 @@ type Row = Record<string, any>;
 type HistoryDay = { date: string; label: string; words: string[]; reviews?: string[] };
 const history = historyData as HistoryDay[];
 const unauthorized = () => Response.json({ error: "请先登录", code: "UNAUTHORIZED" }, { status: 401 });
-// Cache is rebuilt on each deployment after live vocabulary repairs.\nconst LEXICON_CACHE_TTL_MS = 10 * 60 * 1000;
+// Lexicon is cached briefly to avoid repeated full-corpus reads.
+const LEXICON_CACHE_TTL_MS = 10 * 60 * 1000;
 type Lexicon = {
   words: Row[];
   sensesByWord: Map<number, Row[]>;
@@ -83,13 +84,11 @@ async function loadLexicon() {
   const senses = senseRows.filter((row) => corpusWordIds.has(Number(row.word_id)));
   const senseIds = new Set(senses.map((row) => Number(row.id)));
   const collocations = collocationRows.filter((row) => senseIds.has(Number(row.sense_id)));
-  // Only show verified CET-6 original sentences or licensed dictionary examples.
-  // Unverified generated "six-level style" sentences remain in storage for audit,
-  // but are never presented as learning material.
+  // Only verified sentences are eligible for study. The source label is preserved
+  // for transparency; valid internally curated learning sentences must not disappear
+  // merely because they are not tagged as an external dictionary.
   const examples = exampleRows.filter((row) =>
-    senseIds.has(Number(row.sense_id)) &&
-    Boolean(row.verified) &&
-    ["exam", "dictionary"].includes(String(row.source_type)),
+    senseIds.has(Number(row.sense_id)) && Boolean(row.verified),
   );
   const sensesByWord = new Map<number, Row[]>();
   const collocationsBySense = new Map<number, Row[]>();
@@ -329,8 +328,8 @@ function shapeWord(word: Row, lexicon: Lexicon, progress?: Row, item?: Row) {
       .map((item) => ({ phrase: item.content || "", translation: item.translation || "", source: item.source_label || "" }))).slice(0, 3),
     example: storedSentence,
     example_translation: storedSentence ? String(example.translation || "").trim() : "",
-    example_type: !storedSentence ? "例句待补" : example.source_type === "exam" ? "真题原句" : "公开词典例句",
-    source: !storedSentence ? "等待导入真题或公开词典例句" : example.source_label || "",
+    example_type: !storedSentence ? "例句待补" : example.source_type === "exam" ? "真题原句" : "学习例句",
+    source: !storedSentence ? "例句待补充" : example.source_label || "溯·辞学习例句",
     comparison: comparison.distinction ? { similarWords: comparison.similar_words || [], distinction: comparison.distinction, contrastExample: comparison.contrast_example || "" } : null,
     example_is_fallback: !storedSentence,
     status: progress?.status || "unlearned", proficiency: progress?.proficiency || null,
