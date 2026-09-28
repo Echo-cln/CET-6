@@ -89,7 +89,7 @@ async function loadLexicon() {
   const examples = exampleRows.filter((row) =>
     senseIds.has(Number(row.sense_id)) &&
     Boolean(row.verified) &&
-    ["exam", "dictionary"].includes(String(row.source_type)),
+    ["exam", "dictionary", "user"].includes(String(row.source_type)),
   );
   const sensesByWord = new Map<number, Row[]>();
   const collocationsBySense = new Map<number, Row[]>();
@@ -329,8 +329,8 @@ function shapeWord(word: Row, lexicon: Lexicon, progress?: Row, item?: Row) {
       .map((item) => ({ phrase: item.content || "", translation: item.translation || "", source: item.source_label || "" }))).slice(0, 3),
     example: storedSentence,
     example_translation: storedSentence ? String(example.translation || "").trim() : "",
-    example_type: !storedSentence ? "例句待补" : example.source_type === "exam" ? "真题原句" : "公开词典例句",
-    source: !storedSentence ? "等待导入真题或公开词典例句" : example.source_label || "",
+    example_type: !storedSentence ? "例句待补" : example.source_type === "exam" ? "真题原句" : example.source_type === "user" ? "溯·辞学习例句" : "词典例句",
+    source: !storedSentence ? "例句待补充" : example.source_label || "",
     comparison: comparison.distinction ? { similarWords: comparison.similar_words || [], distinction: comparison.distinction, contrastExample: comparison.contrast_example || "" } : null,
     example_is_fallback: !storedSentence,
     status: progress?.status || "unlearned", proficiency: progress?.proficiency || null,
