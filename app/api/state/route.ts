@@ -323,7 +323,10 @@ function shapeWord(word: Row, lexicon: Lexicon, progress?: Row, item?: Row) {
     phonetic_uk: word.phonetic_uk || "", phonetic_us: word.phonetic_us || "",
     part_of_speech: String(sense.part_of_speech || ""), core_meaning: sense.core_meaning || "释义待补充",
     meanings: senses.map((row) => ({ part_of_speech: row.part_of_speech || "", meaning: row.core_meaning || "" })),
-    collocations: senses.flatMap((row) => (lexicon.collocationsBySense.get(Number(row.id)) || [])\n      .slice()\n      .sort((a, b) => Number(Boolean(b.verified)) - Number(Boolean(a.verified)) || Number(a.rank || 0) - Number(b.rank || 0))\n      .map((item) => ({ phrase: item.content || "", translation: item.translation || "", source: item.source_label || "" }))).slice(0, 3),
+    collocations: senses.flatMap((row) => (lexicon.collocationsBySense.get(Number(row.id)) || [])
+      .slice()
+      .sort((a, b) => Number(Boolean(b.verified)) - Number(Boolean(a.verified)) || Number(a.rank || 0) - Number(b.rank || 0))
+      .map((item) => ({ phrase: item.content || "", translation: item.translation || "", source: item.source_label || "" }))).slice(0, 3),
     example: storedSentence,
     example_translation: storedSentence ? String(example.translation || "").trim() : "",
     example_type: !storedSentence ? "例句待补" : example.source_type === "exam" ? "真题原句" : "公开词典例句",
