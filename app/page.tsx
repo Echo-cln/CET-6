@@ -446,10 +446,10 @@ export default function Home() {
     });
     const payload = (await response.json()) as { error?: string; note?: string };
     if (!response.ok) {
-      toast.error(payload.error || "公开词典查询失败");
+      toast.error(payload.error || "学习内容补全失败");
       return;
     }
-    toast.success(payload.note || "已补全公开词典数据");
+    toast.success(payload.note || "已补全学习内容");
     await load(Boolean(data?.wordsLoaded));
   };
   const rateWord = async (word: Word, proficiency: Proficiency) => {
@@ -976,7 +976,7 @@ export default function Home() {
                 <p className="leading-6">
                   {cleanExample(word.example)
                     ? renderMarkedText(cleanExample(word.example), word.word, appData.highlights.filter((h) => h.word_id === word.id))
-                    : <span className="inline-flex flex-wrap items-center gap-2 text-[#8A94A4]">例句数据待整理 <button type="button" onClick={() => void enrichFromFreeSources(word)} className="rounded-md border border-dashed border-[#ABD7FB] px-2 py-1 text-xs text-[#28628F] hover:bg-[#EFF8FF]">从公开词典补全</button></span>}
+                    : <span className="inline-flex flex-wrap items-center gap-2 text-[#8A94A4]">例句数据待整理 <button type="button" onClick={() => void enrichFromFreeSources(word)} className="rounded-md border border-dashed border-[#ABD7FB] px-2 py-1 text-xs text-[#28628F] hover:bg-[#EFF8FF]">补充学习例句</button></span>}
                 </p>
                 <p
                   className={`mt-2 text-sm leading-6 text-[#697386] ${hiddenParts.example ? "select-none rounded bg-[#E9E4E1] text-transparent" : ""}`}
