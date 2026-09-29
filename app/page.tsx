@@ -22,6 +22,7 @@ import {
   Sparkles,
   Trash2,
   Pencil,
+  Eraser,
   TrendingUp,
   Volume2,
 } from "lucide-react";
@@ -801,20 +802,44 @@ export default function Home() {
     if (!inlineCollection) return null;
     const update = (key: keyof typeof inlineCollection, value: string) =>
       setInlineCollection({ ...inlineCollection, [key]: value });
+    const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+    const startDrag = (event: any) => {
+      dragRef.current = {
+        dx: event.clientX - inlineCollection.left,
+        dy: event.clientY - inlineCollection.top,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    };
+    const moveDrag = (event: any) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      setInlineCollection({
+        ...inlineCollection,
+        left: Math.max(8, Math.min(window.innerWidth - 300, event.clientX - drag.dx)),
+        top: Math.max(8, Math.min(window.innerHeight - 180, event.clientY - drag.dy)),
+      });
+    };
     return (
       <div
         className="fixed z-[70] w-[min(92vw,460px)] resize overflow-auto rounded-2xl border border-[#E5D5CC] bg-[#FFFDFB] p-4 shadow-2xl"
         style={{ top: inlineCollection.top, left: inlineCollection.left, maxHeight: "min(32rem, calc(100vh - 1.5rem))", minHeight: 300 }}
       >
-        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#F0E4DE] pb-2">
+        <div
+          className="mb-3 flex cursor-move touch-none items-center justify-between gap-3 border-b border-[#F0E4DE] pb-2"
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={() => { dragRef.current = null; }}
+          onPointerCancel={() => { dragRef.current = null; }}
+        >
           <div>
             <h3 className="text-sm font-semibold">收藏到写作金句</h3>
             <p className="mt-0.5 text-xs text-[#697386]">
-              就在这里补充信息，不离开当前单词。
+              按住这里可拖动；右下角可拉伸。
             </p>
           </div>
           <button
-            className="text-lg text-[#697386]"
+            className="cursor-pointer text-lg text-[#697386]"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setInlineCollection(null)}
           >
             ×
@@ -917,36 +942,63 @@ export default function Home() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const drawingRef = useRef(false);
     const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+    const lastPointRef = useRef<{ x: number; y: number } | null>(null);
     const [color, setColor] = useState("#8D4A28");
     const [brush, setBrush] = useState(3);
+    const [tool, setTool] = useState<"pen" | "eraser">("pen");
 
     const getPoint = (event: any) => {
       const canvas = canvasRef.current;
       if (!canvas) return null;
       const rect = canvas.getBoundingClientRect();
-      return { x: (event.clientX - rect.left) * canvas.width / rect.width, y: (event.clientY - rect.top) * canvas.height / rect.height };
+      return {
+        x: (event.clientX - rect.left) * canvas.width / rect.width,
+        y: (event.clientY - rect.top) * canvas.height / rect.height,
+      };
+    };
+    const pressureWidth = (event: any) => {
+      const pressure = typeof event.pressure === "number" && event.pressure > 0 ? event.pressure : 0.5;
+      return tool === "eraser"
+        ? 10 + pressure * 36
+        : Math.max(1, brush * (0.55 + pressure * 0.9));
     };
     const begin = (event: any) => {
-      const canvas = canvasRef.current, point = getPoint(event), context = canvas?.getContext("2d");
+      const canvas = canvasRef.current;
+      const point = getPoint(event);
+      const context = canvas?.getContext("2d");
       if (!canvas || !point || !context) return;
       canvas.setPointerCapture(event.pointerId);
       drawingRef.current = true;
+      lastPointRef.current = point;
+      context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
       context.strokeStyle = color;
-      context.lineWidth = brush;
+      context.lineWidth = pressureWidth(event);
       context.lineCap = "round";
       context.lineJoin = "round";
       context.beginPath();
       context.moveTo(point.x, point.y);
     };
     const draw = (event: any) => {
-      const point = getPoint(event), context = canvasRef.current?.getContext("2d");
+      const point = getPoint(event);
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext("2d");
       if (!drawingRef.current || !point || !context) return;
+      context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
+      context.strokeStyle = color;
+      context.lineWidth = pressureWidth(event);
+      context.lineCap = "round";
+      context.lineJoin = "round";
       context.lineTo(point.x, point.y);
       context.stroke();
+      lastPointRef.current = point;
     };
-    const end = () => { drawingRef.current = false; };
+    const end = () => {
+      drawingRef.current = false;
+      lastPointRef.current = null;
+    };
     const clear = () => {
-      const canvas = canvasRef.current, context = canvas?.getContext("2d");
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext("2d");
       if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
     };
     const save = async () => {
@@ -976,8 +1028,26 @@ export default function Home() {
         <div className="p-3">
           <canvas ref={canvasRef} width={620} height={400} className="h-52 w-full touch-none rounded-xl border border-dashed border-[#D8C58B] bg-[#FFFDF5]" onPointerDown={begin} onPointerMove={draw} onPointerUp={end} onPointerCancel={end} />
           <div className="mt-2 flex items-center justify-between gap-2">
-            <input aria-label="笔触颜色" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="size-8 cursor-pointer rounded border-0 bg-transparent p-0" />
-            <input aria-label="笔触粗细" type="range" min="1" max="10" value={brush} onChange={(event) => setBrush(Number(event.target.value))} className="w-24 accent-[#A66A32]" />
+            <button
+              type="button"
+              onClick={() => setTool("pen")}
+              className={`rounded-md px-2 py-1 text-xs ${tool === "pen" ? "bg-[#F1DFC0] text-[#7B5426]" : "text-[#80633B]"}`}
+            >
+              画笔
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool("eraser")}
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${tool === "eraser" ? "bg-[#F1DFC0] text-[#7B5426]" : "text-[#80633B]"}`}
+              title="轻按细擦，重按扩大橡皮范围"
+            >
+              <Eraser className="size-3" />压力橡皮
+            </button>
+            {tool === "pen" && <input aria-label="笔触颜色" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" />}
+            <input aria-label="笔触粗细" type="range" min="1" max="10" value={brush} onChange={(event) => setBrush(Number(event.target.value))} className="w-16 accent-[#A66A32]" />
+          </div>
+          <p className="mt-1 text-[11px] text-[#9A825F]">{tool === "eraser" ? "压力橡皮：轻按细擦，重按可扩大擦除范围。" : "支持触控笔压力；鼠标和手指会采用标准笔触。"}</p>
+          <div className="mt-2 flex justify-end gap-2">
             <button className="text-xs text-[#80633B] hover:text-[#A64B1C]" onClick={clear}>清空</button>
             <button className="rounded-lg bg-[#A66A32] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#8D5727]" onClick={save}>保存</button>
           </div>
