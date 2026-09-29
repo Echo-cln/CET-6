@@ -22,7 +22,6 @@ import {
   Sparkles,
   Trash2,
   Pencil,
-  Eraser,
   TrendingUp,
   Volume2,
 } from "lucide-react";
@@ -803,21 +802,34 @@ export default function Home() {
     const update = (key: keyof typeof inlineCollection, value: string) =>
       setInlineCollection({ ...inlineCollection, [key]: value });
     const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+    const stopDrag = () => {
+      dragRef.current = null;
+      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
+    };
+    const moveDrag = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      setInlineCollection((current) =>
+        current
+          ? {
+              ...current,
+              left: Math.max(8, Math.min(window.innerWidth - 300, event.clientX - drag.dx)),
+              top: Math.max(8, Math.min(window.innerHeight - 180, event.clientY - drag.dy)),
+            }
+          : current,
+      );
+    };
     const startDrag = (event: any) => {
+      event.preventDefault();
       dragRef.current = {
         dx: event.clientX - inlineCollection.left,
         dy: event.clientY - inlineCollection.top,
       };
-      event.currentTarget.setPointerCapture(event.pointerId);
-    };
-    const moveDrag = (event: any) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      setInlineCollection({
-        ...inlineCollection,
-        left: Math.max(8, Math.min(window.innerWidth - 300, event.clientX - drag.dx)),
-        top: Math.max(8, Math.min(window.innerHeight - 180, event.clientY - drag.dy)),
-      });
+      window.addEventListener("pointermove", moveDrag);
+      window.addEventListener("pointerup", stopDrag);
+      window.addEventListener("pointercancel", stopDrag);
     };
     return (
       <div
@@ -828,8 +840,7 @@ export default function Home() {
           className="mb-3 flex cursor-move touch-none items-center justify-between gap-3 border-b border-[#F0E4DE] pb-2"
           onPointerDown={startDrag}
           onPointerMove={moveDrag}
-          onPointerUp={() => { dragRef.current = null; }}
-          onPointerCancel={() => { dragRef.current = null; }}
+
         >
           <div>
             <h3 className="text-sm font-semibold">收藏到写作金句</h3>
@@ -942,10 +953,11 @@ export default function Home() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const drawingRef = useRef(false);
     const dragRef = useRef<{ dx: number; dy: number } | null>(null);
-    const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+    const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const erasingRef = useRef(false);
     const [color, setColor] = useState("#8D4A28");
     const [brush, setBrush] = useState(3);
-    const [tool, setTool] = useState<"pen" | "eraser">("pen");
+    const [longPressErasing, setLongPressErasing] = useState(false);
 
     const getPoint = (event: any) => {
       const canvas = canvasRef.current;
@@ -956,45 +968,64 @@ export default function Home() {
         y: (event.clientY - rect.top) * canvas.height / rect.height,
       };
     };
-    const pressureWidth = (event: any) => {
+    const pressureWidth = (event: any, erasing: boolean) => {
       const pressure = typeof event.pressure === "number" && event.pressure > 0 ? event.pressure : 0.5;
-      return tool === "eraser"
-        ? 10 + pressure * 36
-        : Math.max(1, brush * (0.55 + pressure * 0.9));
+      return erasing ? 10 + pressure * 36 : Math.max(1, brush * (0.55 + pressure * 0.9));
+    };
+    const strokeTo = (event: any, erasing: boolean, begin = false) => {
+      const canvas = canvasRef.current;
+      const point = getPoint(event);
+      const context = canvas?.getContext("2d");
+      if (!point || !context) return;
+      context.globalCompositeOperation = erasing ? "destination-out" : "source-over";
+      context.strokeStyle = color;
+      context.lineWidth = pressureWidth(event, erasing);
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      if (begin) {
+        context.beginPath();
+        context.moveTo(point.x, point.y);
+      } else {
+        context.lineTo(point.x, point.y);
+        context.stroke();
+      }
+    };
+    const cancelHold = () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
     };
     const begin = (event: any) => {
       const canvas = canvasRef.current;
-      const point = getPoint(event);
-      const context = canvas?.getContext("2d");
-      if (!canvas || !point || !context) return;
+      if (!canvas) return;
       canvas.setPointerCapture(event.pointerId);
       drawingRef.current = true;
-      lastPointRef.current = point;
-      context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
-      context.strokeStyle = color;
-      context.lineWidth = pressureWidth(event);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.beginPath();
-      context.moveTo(point.x, point.y);
+      erasingRef.current = false;
+      setLongPressErasing(false);
+      holdTimerRef.current = setTimeout(() => {
+        if (!drawingRef.current) return;
+        erasingRef.current = true;
+        setLongPressErasing(true);
+        strokeTo(event, true, true);
+      }, 450);
     };
     const draw = (event: any) => {
-      const point = getPoint(event);
-      const canvas = canvasRef.current;
-      const context = canvas?.getContext("2d");
-      if (!drawingRef.current || !point || !context) return;
-      context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
-      context.strokeStyle = color;
-      context.lineWidth = pressureWidth(event);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.lineTo(point.x, point.y);
-      context.stroke();
-      lastPointRef.current = point;
+      if (!drawingRef.current) return;
+      if (!erasingRef.current) {
+        if (holdTimerRef.current) {
+          cancelHold();
+          strokeTo(event, false, true);
+          return;
+        }
+        strokeTo(event, false);
+        return;
+      }
+      strokeTo(event, true);
     };
     const end = () => {
+      cancelHold();
       drawingRef.current = false;
-      lastPointRef.current = null;
+      erasingRef.current = false;
+      setLongPressErasing(false);
     };
     const clear = () => {
       const canvas = canvasRef.current;
@@ -1006,11 +1037,13 @@ export default function Home() {
       if (!drawing) return;
       await mutate({ action: "save-draft", title: "手写便签", text: "", drawing }, "手写便签已保存到草稿本");
     };
-    const startDrag = (event: any) => {
-      dragRef.current = { dx: event.clientX - stickyPosition.left, dy: event.clientY - stickyPosition.top };
-      event.currentTarget.setPointerCapture(event.pointerId);
+    const stopDrag = () => {
+      dragRef.current = null;
+      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
     };
-    const moveDrag = (event: any) => {
+    const moveDrag = (event: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
       setStickyPosition({
@@ -1018,39 +1051,29 @@ export default function Home() {
         top: Math.max(8, Math.min(window.innerHeight - 330, event.clientY - drag.dy)),
       });
     };
+    const startDrag = (event: any) => {
+      event.preventDefault();
+      dragRef.current = { dx: event.clientX - stickyPosition.left, dy: event.clientY - stickyPosition.top };
+      window.addEventListener("pointermove", moveDrag);
+      window.addEventListener("pointerup", stopDrag);
+      window.addEventListener("pointercancel", stopDrag);
+    };
     if (!stickyOpen) return null;
     return (
       <section className="fixed z-[65] w-[min(92vw,340px)] overflow-hidden rounded-2xl border border-[#E7D5B3] bg-[#FFFCEB] shadow-2xl" style={{ left: stickyPosition.left, top: stickyPosition.top }}>
-        <div className="flex cursor-move touch-none items-center justify-between border-b border-[#E7D5B3] bg-[#FFF5C8] px-3 py-2" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
-          <span className="text-sm font-semibold text-[#7B5426]">手写便签</span>
+        <div className="flex cursor-grab touch-none select-none items-center justify-between border-b border-[#E7D5B3] bg-[#FFF5C8] px-3 py-2 active:cursor-grabbing" onPointerDown={startDrag}>
+          <span className="text-sm font-semibold text-[#7B5426]">手写便签 · 按住这里拖动</span>
           <button className="cursor-pointer text-lg text-[#8A704D]" onPointerDown={(event) => event.stopPropagation()} onClick={() => setStickyOpen(false)}>×</button>
         </div>
         <div className="p-3">
           <canvas ref={canvasRef} width={620} height={400} className="h-52 w-full touch-none rounded-xl border border-dashed border-[#D8C58B] bg-[#FFFDF5]" onPointerDown={begin} onPointerMove={draw} onPointerUp={end} onPointerCancel={end} />
           <div className="mt-2 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setTool("pen")}
-              className={`rounded-md px-2 py-1 text-xs ${tool === "pen" ? "bg-[#F1DFC0] text-[#7B5426]" : "text-[#80633B]"}`}
-            >
-              画笔
-            </button>
-            <button
-              type="button"
-              onClick={() => setTool("eraser")}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${tool === "eraser" ? "bg-[#F1DFC0] text-[#7B5426]" : "text-[#80633B]"}`}
-              title="轻按细擦，重按扩大橡皮范围"
-            >
-              <Eraser className="size-3" />压力橡皮
-            </button>
-            {tool === "pen" && <input aria-label="笔触颜色" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" />}
-            <input aria-label="笔触粗细" type="range" min="1" max="10" value={brush} onChange={(event) => setBrush(Number(event.target.value))} className="w-16 accent-[#A66A32]" />
-          </div>
-          <p className="mt-1 text-[11px] text-[#9A825F]">{tool === "eraser" ? "压力橡皮：轻按细擦，重按可扩大擦除范围。" : "支持触控笔压力；鼠标和手指会采用标准笔触。"}</p>
-          <div className="mt-2 flex justify-end gap-2">
+            <input aria-label="笔触颜色" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="size-7 cursor-pointer rounded border-0 bg-transparent p-0" />
+            <input aria-label="笔触粗细" type="range" min="1" max="10" value={brush} onChange={(event) => setBrush(Number(event.target.value))} className="w-20 accent-[#A66A32]" />
             <button className="text-xs text-[#80633B] hover:text-[#A64B1C]" onClick={clear}>清空</button>
             <button className="rounded-lg bg-[#A66A32] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#8D5727]" onClick={save}>保存</button>
           </div>
+          <p className="mt-1 text-[11px] text-[#9A825F]">{longPressErasing ? "正在橡皮擦：保持按住并移动即可擦除。" : "画布内原地长按约 0.45 秒进入压力橡皮；松开后自动恢复画笔。"}</p>
         </div>
       </section>
     );
