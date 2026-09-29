@@ -335,6 +335,8 @@ export default function Home() {
   } | null>(null);
   const [moreCount, setMoreCount] = useState(20);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [stickyOpen, setStickyOpen] = useState(false);
+  const [stickyPosition, setStickyPosition] = useState({ left: 0, top: 0 });
 
   useEffect(() => {
     const token = localStorage.getItem("suci_access_token");
@@ -908,6 +910,80 @@ export default function Home() {
         </div>
         </div>
       </div>
+    );
+  }
+
+
+  function HandwritingSticky() {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const drawingRef = useRef(false);
+    const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+    const [color, setColor] = useState("#8D4A28");
+    const [brush, setBrush] = useState(3);
+
+    const getPoint = (event: any) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      return { x: (event.clientX - rect.left) * canvas.width / rect.width, y: (event.clientY - rect.top) * canvas.height / rect.height };
+    };
+    const begin = (event: any) => {
+      const canvas = canvasRef.current, point = getPoint(event), context = canvas?.getContext("2d");
+      if (!canvas || !point || !context) return;
+      canvas.setPointerCapture(event.pointerId);
+      drawingRef.current = true;
+      context.strokeStyle = color;
+      context.lineWidth = brush;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(point.x, point.y);
+    };
+    const draw = (event: any) => {
+      const point = getPoint(event), context = canvasRef.current?.getContext("2d");
+      if (!drawingRef.current || !point || !context) return;
+      context.lineTo(point.x, point.y);
+      context.stroke();
+    };
+    const end = () => { drawingRef.current = false; };
+    const clear = () => {
+      const canvas = canvasRef.current, context = canvas?.getContext("2d");
+      if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
+    };
+    const save = async () => {
+      const drawing = canvasRef.current?.toDataURL("image/png") || "";
+      if (!drawing) return;
+      await mutate({ action: "save-draft", title: "手写便签", text: "", drawing }, "手写便签已保存到草稿本");
+    };
+    const startDrag = (event: any) => {
+      dragRef.current = { dx: event.clientX - stickyPosition.left, dy: event.clientY - stickyPosition.top };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    };
+    const moveDrag = (event: any) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      setStickyPosition({
+        left: Math.max(8, Math.min(window.innerWidth - 350, event.clientX - drag.dx)),
+        top: Math.max(8, Math.min(window.innerHeight - 330, event.clientY - drag.dy)),
+      });
+    };
+    if (!stickyOpen) return null;
+    return (
+      <section className="fixed z-[65] w-[min(92vw,340px)] overflow-hidden rounded-2xl border border-[#E7D5B3] bg-[#FFFCEB] shadow-2xl" style={{ left: stickyPosition.left, top: stickyPosition.top }}>
+        <div className="flex cursor-move touch-none items-center justify-between border-b border-[#E7D5B3] bg-[#FFF5C8] px-3 py-2" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
+          <span className="text-sm font-semibold text-[#7B5426]">手写便签</span>
+          <button className="cursor-pointer text-lg text-[#8A704D]" onPointerDown={(event) => event.stopPropagation()} onClick={() => setStickyOpen(false)}>×</button>
+        </div>
+        <div className="p-3">
+          <canvas ref={canvasRef} width={620} height={400} className="h-52 w-full touch-none rounded-xl border border-dashed border-[#D8C58B] bg-[#FFFDF5]" onPointerDown={begin} onPointerMove={draw} onPointerUp={end} onPointerCancel={end} />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <input aria-label="笔触颜色" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="size-8 cursor-pointer rounded border-0 bg-transparent p-0" />
+            <input aria-label="笔触粗细" type="range" min="1" max="10" value={brush} onChange={(event) => setBrush(Number(event.target.value))} className="w-24 accent-[#A66A32]" />
+            <button className="text-xs text-[#80633B] hover:text-[#A64B1C]" onClick={clear}>清空</button>
+            <button className="rounded-lg bg-[#A66A32] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#8D5727]" onClick={save}>保存</button>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -2099,13 +2175,17 @@ export default function Home() {
       </div>
       <button
         type="button"
-        onClick={() => setView("drafts")}
+        onClick={() => {
+          setStickyPosition({ left: Math.max(12, window.innerWidth - 360), top: Math.max(12, window.innerHeight - 330) });
+          setStickyOpen(true);
+        }}
         className="fixed bottom-6 right-6 z-30 grid size-12 place-items-center rounded-full border border-[#E5D5CC] bg-[#FFFDFB] text-[#A64B1C] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#FFF4ED]"
-        title="打开草稿本"
+        title="打开手写便签"
       >
         <Pencil className="size-5" />
       </button>
       <InlineCollectionPanel />
+      <HandwritingSticky />
       {selection && (
         <div
           className="fixed z-50 flex max-w-[min(92vw,560px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-[#E5D5CC] bg-white p-2 shadow-2xl"
