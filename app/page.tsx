@@ -839,8 +839,6 @@ export default function Home() {
         <div
           className="mb-3 flex cursor-move touch-none items-center justify-between gap-3 border-b border-[#F0E4DE] pb-2"
           onPointerDown={startDrag}
-          onPointerMove={moveDrag}
-
         >
           <div>
             <h3 className="text-sm font-semibold">收藏到写作金句</h3>
