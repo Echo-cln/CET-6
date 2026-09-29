@@ -325,6 +325,8 @@ export default function Home() {
     replaceableParts: string;
     source: string;
     note: string;
+    top: number;
+    left: number;
   } | null>(null);
   const [practice, setPractice] = useState<{
     id: string;
@@ -554,16 +556,14 @@ export default function Home() {
     wordId?: number,
     translation = "",
     source = "用户收藏",
+    anchor?: { top: number; left: number },
   ) => {
+    const left = Math.max(12, Math.min(window.innerWidth - 470, anchor?.left ?? window.innerWidth / 2 - 220));
+    const top = Math.max(12, Math.min(window.innerHeight - 500, anchor?.top ?? 96));
     setInlineCollection({
-      wordId,
-      content,
-      translation,
+      wordId, content, translation,
       expressionType: content.trim().split(/\s+/).length < 7 ? "词组" : "句型",
-      topic: "通用",
-      replaceableParts: "",
-      source,
-      note: "",
+      topic: "通用", replaceableParts: "", source, note: "", top, left,
     });
     setSelection(null);
   };
@@ -800,9 +800,11 @@ export default function Home() {
     const update = (key: keyof typeof inlineCollection, value: string) =>
       setInlineCollection({ ...inlineCollection, [key]: value });
     return (
-      <div className="fixed inset-0 z-[70] grid place-items-center bg-[#243247]/25 p-4 backdrop-blur-[1px]" onMouseDown={() => setInlineCollection(null)}>
-        <div className="max-h-[min(42rem,calc(100vh-2rem))] w-full max-w-xl overflow-y-auto rounded-3xl border border-[#E5D5CC] bg-[#FFFDFB] p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <div
+        className="fixed z-[70] w-[min(92vw,460px)] resize overflow-auto rounded-2xl border border-[#E5D5CC] bg-[#FFFDFB] p-4 shadow-2xl"
+        style={{ top: inlineCollection.top, left: inlineCollection.left, maxHeight: "min(32rem, calc(100vh - 1.5rem))", minHeight: 300 }}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#F0E4DE] pb-2">
           <div>
             <h3 className="text-sm font-semibold">收藏到写作金句</h3>
             <p className="mt-0.5 text-xs text-[#697386]">
@@ -1021,7 +1023,10 @@ export default function Home() {
                 <div className="flex w-32 flex-col items-stretch gap-2">
                   <button
                     className="shrink-0 rounded-lg border border-[#E5DAD4] bg-white p-1.5 text-[#A64B1C] hover:border-[#F98C53]"
-                    onClick={() => openInlineCollection(cleanExample(word.example), word.id, cleanDisplayText(word.example_translation, 300), word.source || word.example_type)}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      openInlineCollection(cleanExample(word.example), word.id, cleanDisplayText(word.example_translation, 300), word.source || word.example_type, { top: rect.bottom + 10, left: rect.right - 450 });
+                    }}
                     title="收藏到写作金句"
                     disabled={!cleanExample(word.example)}
                   >
