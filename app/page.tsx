@@ -908,7 +908,6 @@ export default function Home() {
             收藏并关闭
           </Button>
         </div>
-        </div>
       </div>
     );
   }
