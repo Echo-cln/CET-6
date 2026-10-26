@@ -1,6 +1,7 @@
-# 溯·辞（SuCi Vocabulary）
+
 
 <p align="center">
+  # 溯·辞（SuCi Vocabulary）
   <strong>面向大学英语六级学习者的词汇学习与复习应用</strong><br>
   通过词义、搭配、例句和个人复习记录，帮助你把单词放回真实语境中学习。
 </p>
